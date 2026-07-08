@@ -2,7 +2,7 @@ from game.constants import CELL_SIZE, EMPTY_CELL, PIECE_PAWN, MOVE_DURATION_MS
 from game.pieces import get_type, same_color
 from game.board import is_inside_board, print_board
 from game.rules import is_legal_move, is_legal_pawn_move, is_path_clear, is_sliding_piece
-from game.movement import PendingMove, apply_arrived_moves
+from game.movement import PendingMove, apply_arrived_moves, is_piece_moving
 
 
 def handle_click(board, pending_moves, selected, x, y, clock):
@@ -21,17 +21,19 @@ def handle_click(board, pending_moves, selected, x, y, clock):
 
     clicked_cell = board[row][col]
 
-    # Nothing selected yet — select a piece
+    # Nothing selected yet — select a piece (only if it is not already moving)
     if selected is None:
-        if clicked_cell != EMPTY_CELL:
+        if clicked_cell != EMPTY_CELL and not is_piece_moving(pending_moves, row, col):
             return (row, col), None
         return None, None
 
     selected_row, selected_col = selected
     selected_piece = board[selected_row][selected_col]
 
-    # Clicking a friendly piece — switch selection
+    # Clicking a friendly piece — switch selection (only if it is not already moving)
     if clicked_cell != EMPTY_CELL and same_color(selected_piece, clicked_cell):
+        if is_piece_moving(pending_moves, row, col):
+            return selected, None
         return (row, col), None
 
     # Attempt to move — validate legality

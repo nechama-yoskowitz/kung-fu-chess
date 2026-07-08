@@ -20,7 +20,7 @@ PendingMove = namedtuple(
 
 def apply_arrived_moves(board, pending_moves, clock):
     """
-    Land every pending move whose arrive_at <= clock.
+    Land every pending move whose arrive_at < clock.
 
     Modifies the board in place and returns a new list containing
     only the moves that have not yet arrived.
@@ -34,3 +34,11 @@ def apply_arrived_moves(board, pending_moves, clock):
             still_pending.append(move)
 
     return still_pending
+
+
+def is_piece_moving(pending_moves, row, col):
+    """Return True if the piece at (row, col) has a pending move in flight."""
+    return any(
+        move.from_row == row and move.from_col == col
+        for move in pending_moves
+    )

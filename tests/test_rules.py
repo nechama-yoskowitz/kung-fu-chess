@@ -276,3 +276,35 @@ def test_path_clear_single_step():
         "wK wR",
     ])
     assert is_path_clear(board, 0, 0, 0, 1) is True
+
+
+# ---------------------------------------------------------------------------
+# is_legal_move — unknown piece type
+# (added after MOVEMENT_RULES dict replaced the if-chain in iteration 6:
+#  the dict returns None for unknown types, which must produce False)
+# ---------------------------------------------------------------------------
+
+def test_unknown_piece_type_is_illegal():
+    # "wX" has no entry in MOVEMENT_RULES — must return False, not crash
+    assert is_legal_move("wX", 0, 0, 1, 1) is False
+
+
+# ---------------------------------------------------------------------------
+# _sign via is_path_clear — zero step (same row AND same col would be a
+# no-op move, but _sign(0) must return 0 without crashing)
+# (added to cover the _sign(0) branch introduced when we extracted _sign
+#  as a named helper instead of inline ternaries)
+# ---------------------------------------------------------------------------
+
+def test_path_clear_same_row_step_is_zero():
+    # Moving along a row: row_step == 0, col_step != 0.
+    # _sign(0) is exercised for the row direction.
+    board = make_board(["wR . . wK"])
+    assert is_path_clear(board, 0, 0, 0, 3) is True
+
+
+def test_path_clear_same_col_step_is_zero():
+    # Moving along a column: col_step == 0, row_step != 0.
+    # _sign(0) is exercised for the column direction.
+    board = make_board(["wR", ".", ".", "wK"])
+    assert is_path_clear(board, 0, 0, 3, 0) is True
