@@ -28,7 +28,7 @@ def apply_arrived_moves(board, pending_moves, clock):
     still_pending = []
 
     for move in pending_moves:
-        if move.arrive_at < clock:
+        if move.arrive_at <= clock:
             move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
         else:
             still_pending.append(move)
@@ -40,5 +40,18 @@ def is_piece_moving(pending_moves, row, col):
     """Return True if the piece at (row, col) has a pending move in flight."""
     return any(
         move.from_row == row and move.from_col == col
+        for move in pending_moves
+    )
+
+
+def has_any_pending_move_for_color(pending_moves, color):
+    """Return True if any in-flight move belongs to the given color ('w' or 'b')."""
+    return any(move.piece[0] == color for move in pending_moves)
+
+
+def is_destination_claimed(pending_moves, row, col):
+    """Return True if another pending move is already heading to (row, col)."""
+    return any(
+        move.to_row == row and move.to_col == col
         for move in pending_moves
     )
