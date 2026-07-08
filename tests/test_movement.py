@@ -350,26 +350,25 @@ def test_illegal_pawn_move_returns_no_pending():
 # opposite-color concurrency rule (platform tests 1–4)
 # ---------------------------------------------------------------------------
 
-def test_opposite_color_cannot_start_while_other_color_is_moving(capsys):
-    # wR starts moving at t=0; bR click while wR is in flight must be ignored.
-    # After wait 2000 both would normally arrive, but bR never started.
+def test_opposite_colors_can_move_concurrently(capsys):
+    # Both wR and bR may start moving at the same time — no broad color block.
     board = make_board([
         "wR . .",
         ". . .",
         "bR . .",
     ])
     commands = [
-        "click 50 50",    # select wR  (pixel → row=0, col=0)
+        "click 50 50",    # select wR (row=0, col=0)
         "click 250 50",   # wR → col 2, arrive_at=1000
-        "click 50 250",   # try to select bR — ignored (opposite color in flight)
-        "click 250 250",  # try to send bR — ignored (nothing selected)
-        f"wait 2000",
+        "click 50 250",   # select bR (row=2, col=0) — allowed, different color
+        "click 250 250",  # bR → col 2, arrive_at=1000
+        f"wait {MOVE_DURATION_MS}",
         "print board",
     ]
     process_commands(board, commands)
     lines = capsys.readouterr().out.strip().splitlines()
-    assert lines[0] == ". . wR"   # wR arrived
-    assert lines[2] == "bR . ."   # bR never moved
+    assert lines[0] == ". . wR"
+    assert lines[2] == ". . bR"
 
 
 def test_opposite_color_can_move_after_first_arrives(capsys):
@@ -441,3 +440,299 @@ def test_no_cooldown_after_arrival(capsys):
     process_commands(board, commands)
     output = capsys.readouterr().out.strip()
     assert output == ". . wR"
+
+
+# ===========================================================================
+# Iteration 8 — advanced real-time interaction
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# T1 & T2: enemy collision — first mover wins
+#
+# How it works: has_any_pending_move_for_color blocks the opposite color from
+# starting a move while the first color is in flight.  The second click is
+# therefore ignored and only the first piece arrives.
+# ---------------------------------------------------------------------------
+
+def test_enemy_collision_both_move_first_mover_wins(capsys):
+    # wR starts toward col=3 (where bR is), bR starts toward col=0 (where wR was).
+    # Both are in flight simultaneously with the same arrive_at.
+    # apply_arrived_moves processes wR first (it was added first to pending list).
+    # wR lands at (0,3) capturing bR. bR's move checks origin (0,3) — now "wR", not "bR"
+    # → bR's move is cancelled. Result: . . . wR
+    board = make_board(["wR . . bR"])
+    commands = [
+        "click 50 50",   # select wR (col=0)
+        "click 350 50",  # wR → col=3, arrive_at=1000
+        "click 350 50",  # select bR (col=3) — allowed (concurrent)
+        "click 50 50",   # bR → col=0, arrive_at=1000
+        "wait 3000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    # wR processed first: lands at (0,3), bR captured.
+    # bR processed second: origin (0,3) is now "wR" ≠ "bR" → cancelled.
+    assert output == ". . . wR"
+
+
+# ---------------------------------------------------------------------------
+# T3: friendly blocker — sliding piece cannot move through friendly piece
+#
+# How it works: is_path_clear checks squares between source and destination;
+# wP at (1,1) blocks wR at (1,0) from reaching (1,2).
+# ---------------------------------------------------------------------------
+
+def test_cannot_start_move_through_friendly_piece(capsys):
+    board = make_board([
+        ". . .",
+        "wR wP .",
+        ". . .",
+    ])
+    commands = [
+        "click 50 150",   # select wR at (row=1, col=0)
+        "click 250 150",  # try to move to (row=1, col=2) — wP blocks path
+        "wait 2000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[1] == "wR wP ."   # board unchanged
+
+
+def test_sliding_piece_can_move_to_adjacent_friendly_free_square(capsys):
+    # Sanity: rook can reach col=1 when nothing is blocking
+    board = make_board([
+        ". . .",
+        "wR . .",
+        ". . .",
+    ])
+    commands = [
+        "click 50 150",
+        "click 150 150",
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[1] == ". wR ."
+
+
+# ---------------------------------------------------------------------------
+# T4: dynamic block — opposite color is blocked mid-flight
+#
+# wQ starts moving at t=0; at t=200 bP tries to move into wQ's path.
+# bP is blocked because wQ (opposite color) is already in flight.
+# wQ arrives at its destination unimpeded.
+# ---------------------------------------------------------------------------
+
+def test_dynamic_block_opposite_color_blocked_while_queen_in_flight(capsys):
+    board = make_board([
+        ". . . .",
+        "wQ . . bK",
+        ". . bP .",
+        ". . . .",
+    ])
+    commands = [
+        "click 50 150",   # select wQ (row=1, col=0)
+        "click 350 150",  # wQ → (row=1, col=3), arrive_at=1000
+        "wait 200",
+        "click 250 250",  # try to select bP (row=2, col=2) — opposite color blocked
+        "click 250 150",  # nothing selected → ignored
+        "wait 3000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[1] == ". . . wQ"
+    assert lines[2] == ". . bP ."   # bP never moved
+
+
+# ---------------------------------------------------------------------------
+# T5: knight cannot land on friendly piece
+#
+# How it works: wN at (2,0) tries to jump to (0,1) where wP sits.
+# The second click triggers the "switch selection to friendly piece" branch
+# instead of creating a move — so wN never moves.
+# ---------------------------------------------------------------------------
+
+def test_knight_cannot_land_on_friendly_piece(capsys):
+    board = make_board([
+        ". wP .",
+        ". . .",
+        "wN . .",
+    ])
+    commands = [
+        "click 50 250",  # select wN (row=2, col=0)
+        "click 150 50",  # (row=0, col=1) has wP — switches selection, no move
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". wP ."
+    assert lines[2] == "wN . ."
+
+
+def test_knight_can_land_on_empty_square(capsys):
+    # Sanity: knight moves normally when destination is empty
+    board = make_board([
+        ". . .",
+        ". . .",
+        "wN . .",
+    ])
+    commands = [
+        "click 50 250",   # select wN (row=2, col=0)
+        "click 150 50",   # (row=0, col=1) — valid knight move, empty
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". wN ."
+    assert lines[2] == ". . ."
+
+
+def test_knight_can_capture_enemy(capsys):
+    # Knight may land on an enemy piece (capture)
+    board = make_board([
+        ". bP .",
+        ". . .",
+        "wN . .",
+    ])
+    commands = [
+        "click 50 250",
+        "click 150 50",
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". wN ."
+    assert lines[2] == ". . ."
+
+
+# ---------------------------------------------------------------------------
+# T6: premove does not execute in common route
+#
+# wR starts moving to col=1 (arrive_at=1000).
+# While moving, player tries to re-select wR (blocked) then send it to col=2
+# (nothing selected → ignored).
+# After wait 2000, wR is at col=1 and never reached col=2.
+# ---------------------------------------------------------------------------
+
+def test_premove_does_not_execute_in_common_route(capsys):
+    board = make_board(["wR . ."])
+    commands = [
+        "click 50 50",    # select wR (col=0)
+        "click 150 50",   # wR → col=1, arrive_at=1000
+        "click 50 50",    # try to re-select wR while moving — blocked
+        "click 250 50",   # nothing selected → ignored
+        "wait 2000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    assert output == ". wR ."
+
+
+def test_premove_executes_after_first_arrives(capsys):
+    # A second move IS possible if it is issued after the first arrives.
+    board = make_board(["wR . ."])
+    commands = [
+        "click 50 50",
+        "click 150 50",   # wR → col=1, arrive_at=1000
+        "wait 1000",      # wR lands
+        "click 150 50",   # select wR at new position
+        "click 250 50",   # wR → col=2
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    assert output == ". . wR"
+
+
+# ===========================================================================
+# Conflict rules — explicit coverage per requirements
+# ===========================================================================
+
+def test_two_pieces_cannot_target_same_destination(capsys):
+    # Two white rooks on different rows both try to reach (0,2).
+    # The second move is blocked by is_destination_claimed.
+    board = make_board([
+        "wR . . . .",
+        ". . . . .",
+        "wR . . . .",
+    ])
+    commands = [
+        "click 0 0",      # select wR at (row=0, col=0)
+        "click 200 0",    # wR row=0 → (row=0, col=2), destination (0,2) claimed
+        "click 0 200",    # select wR at (row=2, col=0)
+        "click 200 0",    # wR row=2 tries → (row=0, col=2) — blocked by is_destination_claimed
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". . wR . ."   # first rook arrived at (0,2)
+    assert lines[2] == "wR . . . ."   # second rook never moved
+
+
+def test_moving_piece_cannot_be_redirected(capsys):
+    # wR is sent to col=3. While in flight, player tries to re-select and redirect.
+    # Re-selection fails (is_piece_moving), redirect is ignored.
+    board = make_board(["wR . . . ."])
+    commands = [
+        "click 0 0",
+        "click 300 0",    # wR → col=3
+        "click 0 0",      # try to re-select wR while moving — blocked
+        "click 100 0",    # nothing selected → ignored
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    assert output == ". . . wR ."     # arrived at col=3, not col=1
+
+
+def test_opposite_color_pieces_move_concurrently_no_conflict(capsys):
+    # wR moves along row 0, bR moves along row 2 — no shared destination.
+    # Both should arrive normally.
+    board = make_board([
+        "wR . . . .",
+        ". . . . .",
+        "bR . . . .",
+    ])
+    commands = [
+        "click 0 0",      # select wR
+        "click 400 0",    # wR → col=4
+        "click 0 200",    # select bR — allowed (different color, no conflict)
+        "click 400 200",  # bR → col=4 on row=2 — different destination
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". . . . wR"
+    assert lines[2] == ". . . . bR"
+
+
+def test_same_color_pieces_move_concurrently_no_conflict(capsys):
+    # Two white pieces move to different destinations simultaneously.
+    board = make_board([
+        "wR . . . .",
+        "wR . . . .",
+    ])
+    commands = [
+        "click 0 0",      # select wR row=0
+        "click 100 0",    # wR row=0 → col=1
+        "click 0 100",    # select wR row=1
+        "click 300 100",  # wR row=1 → col=3 — different destination, allowed
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". wR . . ."
+    assert lines[1] == ". . . wR ."

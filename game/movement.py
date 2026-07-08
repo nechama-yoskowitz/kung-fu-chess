@@ -20,7 +20,10 @@ PendingMove = namedtuple(
 
 def apply_arrived_moves(board, pending_moves, clock):
     """
-    Land every pending move whose arrive_at < clock.
+    Land every pending move whose arrive_at <= clock.
+
+    A move is cancelled if the piece is no longer at its origin square
+    (another move already displaced it — first mover wins).
 
     Modifies the board in place and returns a new list containing
     only the moves that have not yet arrived.
@@ -29,7 +32,10 @@ def apply_arrived_moves(board, pending_moves, clock):
 
     for move in pending_moves:
         if move.arrive_at <= clock:
-            move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
+            # Only execute if the piece is still at its origin.
+            if board[move.from_row][move.from_col] == move.piece:
+                move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
+            # else: piece was already displaced — move is silently cancelled.
         else:
             still_pending.append(move)
 

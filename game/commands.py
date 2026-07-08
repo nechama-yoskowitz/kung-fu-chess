@@ -2,7 +2,7 @@ from game.constants import CELL_SIZE, EMPTY_CELL, PIECE_PAWN, MOVE_DURATION_MS
 from game.pieces import get_type, same_color
 from game.board import is_inside_board, print_board
 from game.rules import is_legal_move, is_legal_pawn_move, is_path_clear, is_sliding_piece
-from game.movement import PendingMove, apply_arrived_moves, is_piece_moving, has_any_pending_move_for_color, is_destination_claimed
+from game.movement import PendingMove, apply_arrived_moves, is_piece_moving, is_destination_claimed
 
 
 def handle_click(board, pending_moves, selected, x, y, clock):
@@ -46,12 +46,6 @@ def handle_click(board, pending_moves, selected, x, y, clock):
         if is_sliding_piece(selected_piece):
             if not is_path_clear(board, selected_row, selected_col, row, col):
                 return None, None
-
-    # Block opposite-color moves while any piece is currently in flight.
-    # Two pieces of opposite colors may not move concurrently.
-    opposite_color = "b" if selected_piece[0] == "w" else "w"
-    if has_any_pending_move_for_color(pending_moves, opposite_color):
-        return None, None
 
     # Block moves to a square already claimed by another pending move.
     if is_destination_claimed(pending_moves, row, col):
