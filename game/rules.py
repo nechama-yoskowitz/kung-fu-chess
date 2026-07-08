@@ -1,7 +1,8 @@
 from game.constants import (
     EMPTY_CELL,
-    PIECE_KING, PIECE_QUEEN, PIECE_ROOK, PIECE_BISHOP, PIECE_KNIGHT, PIECE_PAWN,
+    PIECE_PAWN,
     SLIDING_PIECES,
+    MOVEMENT_RULES,
 )
 from game.pieces import get_type, get_color
 
@@ -10,31 +11,10 @@ def is_legal_move(piece, from_row, from_col, to_row, to_col):
     """Check if a non-pawn piece move is geometrically legal (ignores board state)."""
     row_diff = abs(to_row - from_row)
     col_diff = abs(to_col - from_col)
-    piece_type = get_type(piece)
-
-    if piece_type == PIECE_KING:
-        return row_diff <= 1 and col_diff <= 1
-
-    if piece_type == PIECE_ROOK:
-        return from_row == to_row or from_col == to_col
-
-    if piece_type == PIECE_BISHOP:
-        return row_diff == col_diff
-
-    if piece_type == PIECE_QUEEN:
-        return (
-            from_row == to_row or
-            from_col == to_col or
-            row_diff == col_diff
-        )
-
-    if piece_type == PIECE_KNIGHT:
-        return (
-            (row_diff == 2 and col_diff == 1) or
-            (row_diff == 1 and col_diff == 2)
-        )
-
-    return False
+    rule = MOVEMENT_RULES.get(get_type(piece))
+    if rule is None:
+        return False
+    return rule(row_diff, col_diff)
 
 
 def is_legal_pawn_move(board, piece, from_row, from_col, to_row, to_col):

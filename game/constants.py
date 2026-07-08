@@ -14,6 +14,18 @@ PIECE_PAWN   = "P"
 
 SLIDING_PIECES = {PIECE_QUEEN, PIECE_ROOK, PIECE_BISHOP}
 
+# Maps each piece type to its movement rule.
+# The rule is a callable (row_diff, col_diff) -> bool,
+# where both diffs are absolute values.
+# To support custom pieces in the future, add an entry here.
+MOVEMENT_RULES = {
+    PIECE_KING:   lambda dr, dc: dr <= 1 and dc <= 1,
+    PIECE_ROOK:   lambda dr, dc: dr == 0 or dc == 0,
+    PIECE_BISHOP: lambda dr, dc: dr == dc,
+    PIECE_QUEEN:  lambda dr, dc: dr == 0 or dc == 0 or dr == dc,
+    PIECE_KNIGHT: lambda dr, dc: (dr == 2 and dc == 1) or (dr == 1 and dc == 2),
+}
+
 VALID_TOKENS = {
     EMPTY_CELL,
     "wK", "wQ", "wR", "wB", "wN", "wP",
