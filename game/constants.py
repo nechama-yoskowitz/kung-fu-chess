@@ -34,3 +34,6 @@ VALID_TOKENS = {
 
 ERROR_ROW_WIDTH_MISMATCH = "ERROR ROW_WIDTH_MISMATCH"
 ERROR_UNKNOWN_TOKEN      = "ERROR UNKNOWN_TOKEN"
+
+# How long (in ms) it takes for a piece to travel from source to destination.
+MOVE_DURATION_MS = 1000
