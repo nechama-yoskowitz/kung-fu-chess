@@ -28,7 +28,7 @@ def apply_arrived_moves(board, pending_moves, clock):
     still_pending = []
 
     for move in pending_moves:
-        if move.arrive_at <= clock:
+        if move.arrive_at < clock:
             move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
         else:
             still_pending.append(move)

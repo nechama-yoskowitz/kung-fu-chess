@@ -30,19 +30,20 @@ def test_move_does_not_arrive_before_time():
     assert len(remaining) == 1
 
 
-def test_move_arrives_exactly_at_time():
+def test_move_does_not_arrive_exactly_at_time():
+    # arrive_at is exclusive: the piece is still in transit at t == arrive_at
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
     remaining = apply_arrived_moves(board, pending, clock=1000)
-    assert board[0][2] == "wR"
-    assert board[0][0] == "."
-    assert len(remaining) == 0
+    assert board[0][0] == "wR"
+    assert board[0][2] == "."
+    assert len(remaining) == 1
 
 
 def test_move_arrives_after_time():
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining = apply_arrived_moves(board, pending, clock=1500)
+    remaining = apply_arrived_moves(board, pending, clock=1001)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
     assert len(remaining) == 0
@@ -55,10 +56,10 @@ def test_only_arrived_moves_are_applied():
         make_move("wB", 0, 4, 0, 3, arrive_at=2000),
     ]
     remaining = apply_arrived_moves(board, pending, clock=1000)
-    # wR has arrived
+    # wR has arrived (arrive_at=500 < clock=1000)
     assert board[0][1] == "wR"
     assert board[0][0] == "."
-    # wB has not arrived yet
+    # wB has not arrived yet (arrive_at=2000 > clock=1000)
     assert board[0][4] == "wB"
     assert board[0][3] == "."
     assert len(remaining) == 1
@@ -73,7 +74,8 @@ def test_multiple_moves_arrive_at_same_time():
         make_move("wR", 0, 0, 0, 2, arrive_at=1000),
         make_move("wB", 1, 0, 1, 2, arrive_at=1000),
     ]
-    remaining = apply_arrived_moves(board, pending, clock=1000)
+    # clock must be strictly greater than arrive_at
+    remaining = apply_arrived_moves(board, pending, clock=1001)
     assert board[0][2] == "wR"
     assert board[1][2] == "wB"
     assert len(remaining) == 0
@@ -82,7 +84,7 @@ def test_multiple_moves_arrive_at_same_time():
 def test_arrived_move_captures_enemy():
     board = make_board(["wR bP ."])
     pending = [make_move("wR", 0, 0, 0, 1, arrive_at=1000)]
-    apply_arrived_moves(board, pending, clock=1000)
+    apply_arrived_moves(board, pending, clock=1001)
     assert board[0][1] == "wR"
     assert board[0][0] == "."
 
@@ -150,7 +152,9 @@ def test_print_board_before_move_arrives_shows_original(capsys):
 
 def test_print_board_after_wait_shows_moved_piece(capsys):
     board = make_board(["wR . ."])
-    commands = ["click 0 0", "click 200 0", f"wait {MOVE_DURATION_MS}", "print board"]
+    # wait MOVE_DURATION_MS puts clock == arrive_at, piece still in transit.
+    # need one extra ms for it to land.
+    commands = ["click 0 0", "click 200 0", f"wait {MOVE_DURATION_MS + 1}", "print board"]
     process_commands(board, commands)
     output = capsys.readouterr().out.strip()
     assert output == ". . wR"
@@ -169,7 +173,7 @@ def test_two_prints_before_and_after_arrival(capsys):
     commands = [
         "click 0 0", "click 200 0",
         "print board",
-        f"wait {MOVE_DURATION_MS}",
+        f"wait {MOVE_DURATION_MS + 1}",
         "print board",
     ]
     process_commands(board, commands)
@@ -198,7 +202,7 @@ def test_pawn_arrives_after_wait(capsys):
         "wP . .",
         ". . .",
     ])
-    commands = ["click 0 100", "click 0 0", f"wait {MOVE_DURATION_MS}", "print board"]
+    commands = ["click 0 100", "click 0 0", f"wait {MOVE_DURATION_MS + 1}", "print board"]
     process_commands(board, commands)
     output = capsys.readouterr().out.strip().splitlines()
     assert output[0] == "wP . ."
