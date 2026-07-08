@@ -1,7 +1,9 @@
 from collections import namedtuple
 
 from game.board import move_piece
-from game.constants import PIECE_KING
+from game.constants import PIECE_KING, PIECE_PAWN, PIECE_QUEEN
+from game.rules import pawn_promotion_row
+from game.pieces import get_type, get_color
 
 
 # Represents a move that has been committed but has not yet arrived.
@@ -48,6 +50,12 @@ def apply_arrived_moves(board, pending_moves, clock):
             if board[move.from_row][move.from_col] == move.piece:
                 captured = board[move.to_row][move.to_col]
                 move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
+
+                # Promote pawn if it reached the last row
+                if get_type(move.piece) == PIECE_PAWN:
+                    color = get_color(move.piece)
+                    if move.to_row == pawn_promotion_row(board, color):
+                        board[move.to_row][move.to_col] = color + PIECE_QUEEN
 
                 if _is_king(captured):
                     game_over = True

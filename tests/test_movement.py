@@ -205,10 +205,12 @@ def test_pawn_arrives_after_wait(capsys):
         "wP . .",
         ". . .",
     ])
+    # wP at row=1, moves to row=0 on a 3-row board.
+    # row=0 is the promotion row for white → pawn becomes queen on arrival.
     commands = ["click 0 100", "click 0 0", f"wait {MOVE_DURATION_MS}", "print board"]
     process_commands(board, commands)
     output = capsys.readouterr().out.strip().splitlines()
-    assert output[0] == "wP . ."
+    assert output[0] == "wQ . ."   # promoted to queen
     assert output[1] == ". . ."
 
 
@@ -873,3 +875,118 @@ def test_wait_after_game_over_does_not_execute_pending(capsys):
     process_commands(board, commands)
     output = capsys.readouterr().out.strip()
     assert output == ". . wR . wB"
+
+
+# ===========================================================================
+# Iteration 10 — pawn double step and promotion (integration)
+# ===========================================================================
+
+def test_white_pawn_double_step_via_process_commands(capsys):
+    # 8-row board. White starting row = row 7. wP at row 7 moves to row 5.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        "wP . .",
+    ])
+    commands = [
+        "click 0 750",    # select wP at (row=7, col=0)
+        "click 0 550",    # move to (row=5, col=0)
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[5] == "wP . ."
+    assert lines[7] == ". . ."
+
+
+def test_black_pawn_double_step_via_process_commands(capsys):
+    # 8-row board. Black starting row = row 0. bP at row 0 moves to row 2.
+    board = make_board([
+        "bP . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+    ])
+    commands = [
+        "click 0 50",     # select bP at row=0
+        "click 0 250",    # move to row=2
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". . ."
+    assert lines[2] == "bP . ."
+
+
+def test_white_pawn_promotes_to_queen_on_arrival(capsys):
+    # wP one step from promotion row. After arrival it becomes wQ.
+    board = make_board([
+        ". . .",
+        "wP . .",
+        ". . .",
+        ". . .",
+    ])
+    # Starting row for white on 4-row board = row 2.
+    # wP is at row 1 (not starting row), moves one step to row 0.
+    commands = [
+        "click 0 150",    # select wP at row=1
+        "click 0 50",     # move to row=0 (promotion row)
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == "wQ . ."   # promoted
+    assert lines[1] == ". . ."
+
+
+def test_black_pawn_promotes_to_queen_on_arrival(capsys):
+    board = make_board([
+        ". . .",
+        ". . .",
+        "bP . .",
+        ". . .",
+    ])
+    # Black promotion row on 4-row board = row 3.
+    # bP at row=2, moves to row=3.
+    commands = [
+        "click 0 250",
+        "click 0 350",
+        f"wait {MOVE_DURATION_MS}",
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[3] == "bQ . ."
+    assert lines[2] == ". . ."
+
+
+def test_promotion_does_not_happen_before_arrival(capsys):
+    # Pawn is in flight toward promotion row — print board before arrival
+    # must still show the pawn at its origin, not a queen anywhere.
+    board = make_board([
+        ". . .",
+        "wP . .",
+        ". . .",
+        ". . .",
+    ])
+    commands = [
+        "click 0 150",
+        "click 0 50",    # wP → row=0, arrive_at=1000
+        "print board",   # t=0: pawn not yet arrived
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". . ."    # no queen yet
+    assert lines[1] == "wP . ."   # pawn still at origin

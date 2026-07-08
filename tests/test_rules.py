@@ -140,13 +140,15 @@ def test_black_pawn_moves_forward_one():
 
 
 def test_pawn_cannot_move_two_squares():
+    # wP at row=1 on a 4-row board. Starting row for white is row=2.
+    # row=1 is NOT the starting row, so two-square move is illegal.
     board = make_board([
-        ". . .",
         ". . .",
         "wP . .",
         ". . .",
+        ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 2, 0, 0, 0) is False
+    assert is_legal_pawn_move(board, "wP", 1, 0, 3, 0) is False
 
 
 def test_pawn_forward_blocked_by_own_piece():
@@ -308,3 +310,102 @@ def test_path_clear_same_col_step_is_zero():
     # _sign(0) is exercised for the column direction.
     board = make_board(["wR", ".", ".", "wK"])
     assert is_path_clear(board, 0, 0, 3, 0) is True
+
+
+# ===========================================================================
+# Iteration 10 — pawn double step and promotion
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# pawn double step
+# ---------------------------------------------------------------------------
+
+def test_white_pawn_double_step_from_starting_row():
+    # 8-row board. White starting row = row 7. wP moves 2 squares to row 5.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        "wP . .",
+    ])
+    assert is_legal_pawn_move(board, "wP", 7, 0, 5, 0) is True
+
+
+def test_black_pawn_double_step_from_starting_row():
+    # 8-row board. Black starting row = row 0. bP moves 2 squares to row 2.
+    board = make_board([
+        "bP . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+    ])
+    assert is_legal_pawn_move(board, "bP", 0, 0, 2, 0) is True
+
+
+def test_pawn_cannot_double_step_from_non_starting_row():
+    # wP at row=5 on 8-row board. Starting row is 7 → double step illegal.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        "wP . .",
+        ". . .",
+        ". . .",
+    ])
+    assert is_legal_pawn_move(board, "wP", 5, 0, 3, 0) is False
+
+
+def test_pawn_cannot_double_step_if_path_blocked():
+    # Piece on row 6 blocks white pawn at row 7 from reaching row 5.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        "bP . .",
+        "wP . .",
+    ])
+    assert is_legal_pawn_move(board, "wP", 7, 0, 5, 0) is False
+
+
+def test_pawn_cannot_double_step_if_destination_occupied():
+    # Piece on row 5 blocks white pawn at row 7 from landing there.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        "bP . .",
+        ". . .",
+        "wP . .",
+    ])
+    assert is_legal_pawn_move(board, "wP", 7, 0, 5, 0) is False
+
+
+def test_pawn_cannot_capture_with_double_step():
+    # Enemy piece diagonally 2 rows away — not a valid pawn move.
+    board = make_board([
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". . .",
+        ". bR .",
+        ". . .",
+        "wP . .",
+    ])
+    # two-square diagonal is not a pawn move at all
+    assert is_legal_pawn_move(board, "wP", 7, 0, 5, 1) is False
