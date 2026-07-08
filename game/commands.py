@@ -69,18 +69,24 @@ def handle_wait(clock, ms):
 
 def process_commands(board, commands):
     """Execute a list of commands against the board."""
-    selected     = None
-    clock        = 0
+    selected      = None
+    clock         = 0
     pending_moves = []
+    game_over     = False
 
     for command in commands:
         parts = command.split()
 
         if command == "print board":
-            pending_moves = apply_arrived_moves(board, pending_moves, clock)
+            if not game_over:
+                pending_moves, game_over = apply_arrived_moves(board, pending_moves, clock)
+                if game_over:
+                    pending_moves = []
             print_board(board)
 
         elif parts[0] == "click":
+            if game_over:
+                continue
             x = int(parts[1])
             y = int(parts[2])
             selected, new_move = handle_click(board, pending_moves, selected, x, y, clock)
@@ -90,4 +96,7 @@ def process_commands(board, commands):
         elif parts[0] == "wait":
             ms    = int(parts[1])
             clock = handle_wait(clock, ms)
-            pending_moves = apply_arrived_moves(board, pending_moves, clock)
+            if not game_over:
+                pending_moves, game_over = apply_arrived_moves(board, pending_moves, clock)
+                if game_over:
+                    pending_moves = []

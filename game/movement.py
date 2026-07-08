@@ -1,6 +1,7 @@
 from collections import namedtuple
 
 from game.board import move_piece
+from game.constants import PIECE_KING
 
 
 # Represents a move that has been committed but has not yet arrived.
@@ -18,6 +19,11 @@ PendingMove = namedtuple(
 )
 
 
+def _is_king(piece):
+    """Return True if piece is a king token."""
+    return len(piece) == 2 and piece[1] == PIECE_KING
+
+
 def apply_arrived_moves(board, pending_moves, clock):
     """
     Land every pending move whose arrive_at <= clock.
@@ -25,21 +31,32 @@ def apply_arrived_moves(board, pending_moves, clock):
     A move is cancelled if the piece is no longer at its origin square
     (another move already displaced it — first mover wins).
 
-    Modifies the board in place and returns a new list containing
-    only the moves that have not yet arrived.
+    Returns (still_pending, game_over).
+    game_over is True if any arrived move captured an enemy king.
+    When game_over is True, still_pending is always empty.
     """
     still_pending = []
+    game_over     = False
 
     for move in pending_moves:
         if move.arrive_at <= clock:
+            if game_over:
+                # Game already ended — discard all remaining moves.
+                continue
+
             # Only execute if the piece is still at its origin.
             if board[move.from_row][move.from_col] == move.piece:
+                captured = board[move.to_row][move.to_col]
                 move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
-            # else: piece was already displaced — move is silently cancelled.
-        else:
-            still_pending.append(move)
 
-    return still_pending
+                if _is_king(captured):
+                    game_over = True
+                    # still_pending stays empty — all remaining moves cancelled.
+        else:
+            if not game_over:
+                still_pending.append(move)
+
+    return still_pending, game_over
 
 
 def is_piece_moving(pending_moves, row, col):

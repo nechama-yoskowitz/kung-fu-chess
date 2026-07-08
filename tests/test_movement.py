@@ -24,29 +24,32 @@ def make_move(piece, from_row, from_col, to_row, to_col, arrive_at):
 def test_move_does_not_arrive_before_time():
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining = apply_arrived_moves(board, pending, clock=999)
+    remaining, game_over = apply_arrived_moves(board, pending, clock=999)
     assert board[0][0] == "wR"
     assert board[0][2] == "."
     assert len(remaining) == 1
+    assert game_over is False
 
 
 def test_move_arrives_exactly_at_time():
     # arrive_at is inclusive: the piece lands exactly when clock == arrive_at
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
     assert len(remaining) == 0
+    assert game_over is False
 
 
 def test_move_arrives_after_time():
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining = apply_arrived_moves(board, pending, clock=1001)
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1001)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
     assert len(remaining) == 0
+    assert game_over is False
 
 
 def test_only_arrived_moves_are_applied():
@@ -55,7 +58,7 @@ def test_only_arrived_moves_are_applied():
         make_move("wR", 0, 0, 0, 1, arrive_at=500),
         make_move("wB", 0, 4, 0, 3, arrive_at=2000),
     ]
-    remaining = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
     # wR has arrived (arrive_at=500 < clock=1000)
     assert board[0][1] == "wR"
     assert board[0][0] == "."
@@ -63,6 +66,7 @@ def test_only_arrived_moves_are_applied():
     assert board[0][4] == "wB"
     assert board[0][3] == "."
     assert len(remaining) == 1
+    assert game_over is False
 
 
 def test_multiple_moves_arrive_at_same_time():
@@ -74,10 +78,11 @@ def test_multiple_moves_arrive_at_same_time():
         make_move("wR", 0, 0, 0, 2, arrive_at=1000),
         make_move("wB", 1, 0, 1, 2, arrive_at=1000),
     ]
-    remaining = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
     assert board[0][2] == "wR"
     assert board[1][2] == "wB"
     assert len(remaining) == 0
+    assert game_over is False
 
 
 def test_arrived_move_captures_enemy():
@@ -90,9 +95,10 @@ def test_arrived_move_captures_enemy():
 
 def test_apply_with_empty_pending_list():
     board = make_board(["wR . ."])
-    remaining = apply_arrived_moves(board, [], clock=5000)
+    remaining, game_over = apply_arrived_moves(board, [], clock=5000)
     assert board[0][0] == "wR"
     assert remaining == []
+    assert game_over is False
 
 
 # ---------------------------------------------------------------------------
@@ -736,3 +742,134 @@ def test_same_color_pieces_move_concurrently_no_conflict(capsys):
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines[0] == ". wR . . ."
     assert lines[1] == ". . . wR ."
+
+
+# ===========================================================================
+# Game over — king capture
+# ===========================================================================
+
+def test_capturing_enemy_king_returns_game_over():
+    # wR arrives at the square occupied by bK → game_over = True
+    board = make_board(["wR . bK"])
+    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
+    assert game_over is True
+    assert board[0][2] == "wR"   # king captured, wR now there
+
+
+def test_capturing_non_king_does_not_trigger_game_over():
+    board = make_board(["wR bP ."])
+    pending = [make_move("wR", 0, 0, 0, 1, arrive_at=1000)]
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
+    assert game_over is False
+
+
+def test_game_over_pending_moves_cleared():
+    # Two moves arrive at the same time; first captures the king.
+    # Second move (still pending at same clock) must be discarded.
+    board = make_board(["wR bK", "wB . "])
+    pending = [
+        make_move("wR", 0, 0, 0, 1, arrive_at=1000),   # captures bK → game over
+        make_move("wB", 1, 0, 1, 1, arrive_at=1000),   # should be cancelled
+    ]
+    remaining, game_over = apply_arrived_moves(board, pending, clock=1000)
+    assert game_over is True
+    assert len(remaining) == 0
+    assert board[1][0] == "wB"   # wB never moved
+
+
+def test_game_over_triggered_only_on_arrival_not_on_click(capsys):
+    # King is captured at t=1000. print board at t=0 should show original.
+    board = make_board(["wR . bK"])
+    commands = [
+        "click 0 0",
+        "click 200 0",   # wR → col=2 (bK), arrive_at=1000
+        "print board",   # t=0: game not over yet
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == "wR . bK"   # king still alive at t=0
+
+
+def test_game_over_board_state_after_king_capture(capsys):
+    board = make_board(["wR . bK"])
+    commands = [
+        "click 0 0",
+        "click 200 0",
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    assert output == ". . wR"
+
+
+def test_clicks_ignored_after_game_over(capsys):
+    board = make_board(["wR . bK . wB"])
+    commands = [
+        "click 0 0",
+        "click 200 0",    # wR → bK, arrive_at=1000
+        "wait 1000",      # game over
+        "click 400 0",    # try to select wB — must be ignored
+        "click 300 0",    # try to move wB — must be ignored
+        "wait 1000",
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    # wR captured bK, wB never moved
+    assert output == ". . wR . wB"
+
+
+def test_pending_moves_cancelled_on_game_over(capsys):
+    # wR captures bK; wB has a pending move that hasn't arrived yet.
+    # After game over, wB's move must be cancelled.
+    board = make_board([
+        "wR . bK",
+        "wB . .  ",
+    ])
+    commands = [
+        "click 0 0",
+        "click 200 0",    # wR → (0,2)=bK, arrive_at=1000
+        "click 0 100",
+        "click 200 100",  # wB → (1,2), arrive_at=1000
+        "wait 1000",      # both arrive at same time; wR processed first → game over
+        "wait 1000",      # extra wait — wB must NOT land
+        "print board",
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == ". . wR"
+    assert lines[1] == "wB . ."   # wB never moved
+
+
+def test_print_board_works_after_game_over(capsys):
+    board = make_board(["wR . bK"])
+    commands = [
+        "click 0 0",
+        "click 200 0",
+        "wait 1000",
+        "print board",
+        "print board",   # second print should also work
+    ]
+    process_commands(board, commands)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 2
+    assert lines[0] == ". . wR"
+    assert lines[1] == ". . wR"
+
+
+def test_wait_after_game_over_does_not_execute_pending(capsys):
+    board = make_board(["wR . bK . wB"])
+    commands = [
+        "click 0 0",
+        "click 200 0",    # wR → bK, arrive_at=1000
+        "click 400 0",    # select wB
+        "click 300 0",    # wB → col=3, arrive_at=1000
+        "wait 1000",      # wR arrives first, game over; wB cancelled
+        "wait 5000",      # further time — nothing should happen
+        "print board",
+    ]
+    process_commands(board, commands)
+    output = capsys.readouterr().out.strip()
+    assert output == ". . wR . wB"
