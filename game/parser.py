@@ -40,3 +40,26 @@ def parse_input():
     board = [line.split() for line in board_lines]
 
     return board, command_lines
+
+def validate_board(board):
+    """
+    Validate that all rows have equal width and all tokens are known.
+    Prints an error and returns False on failure.
+    """
+    expected_width = None
+
+    for row in board:
+        if expected_width is None:
+            expected_width = len(row)
+        elif len(row) != expected_width:
+            print(ERROR_ROW_WIDTH_MISMATCH)
+            return False
+
+        for token in row:
+            if token not in VALID_TOKENS:
+                print(ERROR_UNKNOWN_TOKEN)
+                return False
+
+    return True
+
+

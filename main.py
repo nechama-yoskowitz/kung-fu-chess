@@ -1,5 +1,5 @@
 from game.parser import parse_input
-from game.board import validate_board
+from game.parser import validate_board
 from game.commands import process_commands
 
 
