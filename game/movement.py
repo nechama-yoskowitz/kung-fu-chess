@@ -24,6 +24,16 @@ def _is_king(piece):
     return len(piece) == 2 and piece[1] == PIECE_KING
 
 
+def _apply_pawn_promotion(board, move):
+    """Promote a pawn that reached the last row to a queen."""
+    if get_type(move.piece) != PIECE_PAWN:
+        return
+
+    color = get_color(move.piece)
+    if move.to_row == pawn_promotion_row(board, color):
+        board[move.to_row][move.to_col] = color + PIECE_QUEEN
+
+
 def expire_jumps(active_jumps, clock):
     """Remove jumps whose expires_at < clock (they have already landed)."""
     return [j for j in active_jumps if j.expires_at >= clock]
@@ -55,7 +65,7 @@ def apply_arrived_moves(board, pending_moves, clock, active_jumps=None):
         active_jumps = []
 
     still_pending = []
-    game_over     = False
+    game_over = False
 
     for move in pending_moves:
         if move.arrive_at <= clock:
@@ -68,9 +78,8 @@ def apply_arrived_moves(board, pending_moves, clock, active_jumps=None):
                 airborne = get_airborne_piece_at(active_jumps, move.to_row, move.to_col)
                 if airborne is not None and airborne.piece[0] != move.piece[0]:
                     # Airborne capture: the arriving piece is destroyed.
-                    # Remove the arriving piece from its source cell.
                     board[move.from_row][move.from_col] = EMPTY_CELL
-                    # Check if the destroyed piece was a king.
+
                     if _is_king(move.piece):
                         game_over = True
                     continue
@@ -78,11 +87,7 @@ def apply_arrived_moves(board, pending_moves, clock, active_jumps=None):
                 captured = board[move.to_row][move.to_col]
                 move_piece(board, move.from_row, move.from_col, move.to_row, move.to_col)
 
-                # Promote pawn if it reached the last row
-                if get_type(move.piece) == PIECE_PAWN:
-                    color = get_color(move.piece)
-                    if move.to_row == pawn_promotion_row(board, color):
-                        board[move.to_row][move.to_col] = color + PIECE_QUEEN
+                _apply_pawn_promotion(board, move)
 
                 if _is_king(captured):
                     game_over = True
