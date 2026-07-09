@@ -1,5 +1,11 @@
 import sys
 
+from game.constants import (
+    VALID_TOKENS,
+    ERROR_ROW_WIDTH_MISMATCH,
+    ERROR_UNKNOWN_TOKEN,
+)
+
 
 _SECTION_BOARD    = "Board:"
 _SECTION_COMMANDS = "Commands:"
