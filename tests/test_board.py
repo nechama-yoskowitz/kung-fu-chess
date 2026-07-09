@@ -1,8 +1,8 @@
 import pytest
 from io import StringIO
 from unittest.mock import patch
-from game.board import is_inside_board, validate_board, print_board, move_piece
-
+from game.board import is_inside_board, validate_board, move_piece
+from game.board_printer import print_board
 
 # ---------------------------------------------------------------------------
 # helpers

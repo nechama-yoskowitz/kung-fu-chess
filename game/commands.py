@@ -1,6 +1,7 @@
 from game.constants import CELL_SIZE, EMPTY_CELL, PIECE_PAWN, MOVE_DURATION_MS, JUMP_DURATION_MS
 from game.pieces import get_type, same_color
-from game.board import is_inside_board, print_board
+from game.board import is_inside_board
+from game.board_printer import print_board
 from game.rules import is_legal_move, is_legal_pawn_move, is_path_clear, is_sliding_piece
 from game.movement import (
     PendingMove, ActiveJump,
