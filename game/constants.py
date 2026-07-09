@@ -37,3 +37,6 @@ ERROR_UNKNOWN_TOKEN      = "ERROR UNKNOWN_TOKEN"
 
 # How long (in ms) it takes for a piece to travel from source to destination.
 MOVE_DURATION_MS = 1000
+
+# How long (in ms) a jump/airborne state lasts.
+JUMP_DURATION_MS = 1000
