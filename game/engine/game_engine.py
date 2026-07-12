@@ -1,21 +1,8 @@
 from dataclasses import dataclass
 
 from game.model.board import is_inside_board
-from game.model.constants import (
-    EMPTY_CELL,
-    JUMP_DURATION_MS,
-    MOVE_DURATION_MS,
-)
-from game.realtime.motion import (
-    ActiveJump,
-    PendingMove,
-    is_destination_claimed,
-    is_piece_moving,
-)
-from game.realtime.movement_resolver import (
-    apply_arrived_moves,
-    expire_jumps,
-)
+from game.model.constants import EMPTY_CELL
+from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
 
 
@@ -29,23 +16,34 @@ class MoveResult:
 
 class GameEngine:
     """
-    Own and update the current runtime state of the game.
+    Coordinate the main game services.
 
     The engine is responsible for:
-    - validating move requests,
-    - starting moves and jumps,
-    - advancing time,
-    - resolving arrivals,
-    - maintaining game-over state.
+    - board ownership,
+    - game-over state,
+    - move validation through RuleEngine,
+    - delegating real-time operations to RealTimeArbiter.
     """
 
     def __init__(self, board):
         self.board = board
-        self.clock = 0
-        self.pending_moves = []
-        self.active_jumps = []
         self.game_over = False
         self.rule_engine = RuleEngine()
+        self.arbiter = RealTimeArbiter()
+
+    # Read-only properties delegating to the arbiter.
+
+    @property
+    def clock(self):
+        return self.arbiter.clock
+
+    @property
+    def pending_moves(self):
+        return self.arbiter.pending_moves
+
+    @property
+    def active_jumps(self):
+        return self.arbiter.active_jumps
 
     def request_move(
         self,
@@ -56,14 +54,19 @@ class GameEngine:
     ):
         """Validate and start a requested move."""
         if self.game_over:
-            return MoveResult(is_accepted=False, reason="game_over")
+            return MoveResult(
+                is_accepted=False,
+                reason="game_over",
+            )
 
-        if is_destination_claimed(
-            self.pending_moves,
+        if self.arbiter.is_destination_claimed(
             to_row,
             to_col,
         ):
-            return MoveResult(is_accepted=False, reason="destination_claimed")
+            return MoveResult(
+                is_accepted=False,
+                reason="destination_claimed",
+            )
 
         validation = self.rule_engine.validate_move(
             self.board,
@@ -74,22 +77,25 @@ class GameEngine:
         )
 
         if not validation.is_valid:
-            return MoveResult(is_accepted=False, reason=validation.reason)
+            return MoveResult(
+                is_accepted=False,
+                reason=validation.reason,
+            )
 
         piece = self.board[from_row][from_col]
 
-        pending_move = PendingMove(
-            piece=piece,
-            from_row=from_row,
-            from_col=from_col,
-            to_row=to_row,
-            to_col=to_col,
-            arrive_at=self.clock + MOVE_DURATION_MS,
+        self.arbiter.start_motion(
+            piece,
+            from_row,
+            from_col,
+            to_row,
+            to_col,
         )
 
-        self.pending_moves.append(pending_move)
-
-        return MoveResult(is_accepted=True, reason="ok")
+        return MoveResult(
+            is_accepted=True,
+            reason="ok",
+        )
 
     def request_jump(self, row, col):
         """
@@ -101,7 +107,11 @@ class GameEngine:
         if self.game_over:
             return False
 
-        if not is_inside_board(self.board, row, col):
+        if not is_inside_board(
+            self.board,
+            row,
+            col,
+        ):
             return False
 
         piece = self.board[row][col]
@@ -109,75 +119,52 @@ class GameEngine:
         if piece == EMPTY_CELL:
             return False
 
-        if is_piece_moving(
-            self.pending_moves,
+        if self.arbiter.is_piece_moving_at(
             row,
             col,
         ):
             return False
 
-        if self._is_airborne(row, col):
+        if self.arbiter.is_airborne_at(
+            row,
+            col,
+        ):
             return False
 
-        jump = ActiveJump(
-            piece=piece,
-            row=row,
-            col=col,
-            expires_at=self.clock + JUMP_DURATION_MS,
+        return self.arbiter.start_jump(
+            piece,
+            row,
+            col,
         )
-
-        self.active_jumps.append(jump)
-        return True
 
     def is_piece_moving_at(self, row, col):
         """Return True if the piece at the cell currently has an active move."""
-        return is_piece_moving(
-            self.pending_moves,
+        return self.arbiter.is_piece_moving_at(
             row,
             col,
         )
 
     def handle_wait(self, ms):
-        """Advance the clock and resolve completed actions."""
-        self.clock += ms
-
-        if not self.game_over:
-            self.update_game_state()
-
-    def update_game_state(self):
-        """
-        Resolve all actions that should finish at the current time.
-
-        - Remove expired jumps.
-        - Apply moves that reached their destination.
-        - Clear active actions when the game ends.
-        """
+        """Advance simulated time and resolve completed actions."""
         if self.game_over:
             return
 
-        self.active_jumps = expire_jumps(
-            self.active_jumps,
-            self.clock,
-        )
-
-        (
-            self.pending_moves,
-            self.game_over,
-            self.active_jumps,
-        ) = apply_arrived_moves(
+        game_over = self.arbiter.advance_time(
             self.board,
-            self.pending_moves,
-            self.clock,
-            self.active_jumps,
+            ms,
         )
 
+        if game_over:
+            self.game_over = True
+
+    def update_game_state(self):
+        """Resolve all actions at the current clock value."""
         if self.game_over:
-            self.pending_moves = []
-            self.active_jumps = []
+            return
 
-    def _is_airborne(self, row, col):
-        """Return True if the piece at the cell is currently airborne."""
-        return any(
-            jump.row == row and jump.col == col
-            for jump in self.active_jumps
+        game_over = self.arbiter.update_state(
+            self.board,
         )
+
+        if game_over:
+            self.game_over = True

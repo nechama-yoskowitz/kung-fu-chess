@@ -150,7 +150,7 @@ def test_click_illegal_move_returns_no_pending_move():
 def test_click_arrive_at_uses_clock_offset():
     board = make_board(["wR . ."])
     engine = GameEngine(board)
-    engine.clock = 500
+    engine.arbiter.clock = 500
     ctrl = Controller(engine)
     ctrl.selected = (0, 0)
     ctrl.click(200, 0)
@@ -260,7 +260,7 @@ def test_piece_at_destination_is_not_considered_moving():
 def test_cannot_select_moving_piece():
     board = make_board(["wR . ."])
     engine = GameEngine(board)
-    engine.pending_moves = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    engine.arbiter.pending_moves = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
     ctrl = Controller(engine)
     # try to select the rook while it is in flight
     result = ctrl.click(0, 0)
@@ -281,7 +281,7 @@ def test_can_select_piece_after_arrival():
 def test_cannot_switch_selection_to_moving_piece():
     board = make_board(["wK wR ."])
     engine = GameEngine(board)
-    engine.pending_moves = [make_move("wR", 0, 1, 0, 2, arrive_at=1000)]
+    engine.arbiter.pending_moves = [make_move("wR", 0, 1, 0, 2, arrive_at=1000)]
     ctrl = Controller(engine)
     ctrl.selected = (0, 0)
     # try to switch to wR while it is in flight — selection must stay on wK
