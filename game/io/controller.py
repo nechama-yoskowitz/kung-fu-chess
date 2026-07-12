@@ -1,6 +1,6 @@
-from game.board import is_inside_board
-from game.constants import CELL_SIZE, EMPTY_CELL
-from game.pieces import same_color
+from game.model.board import is_inside_board
+from game.model.constants import CELL_SIZE, EMPTY_CELL
+from game.model.pieces import same_color
 
 
 class Controller:

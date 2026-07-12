@@ -1,5 +1,5 @@
-from game.board import is_inside_board
-from game.constants import (
+from game.model.board import is_inside_board
+from game.model.constants import (
     EMPTY_CELL,
     JUMP_DURATION_MS,
     MOVE_DURATION_MS,

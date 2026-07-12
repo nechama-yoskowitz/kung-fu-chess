@@ -1,5 +1,5 @@
 import pytest
-from game.pieces import get_color, get_type, same_color
+from game.model.pieces import get_color, get_type, same_color
 
 
 # ---------------------------------------------------------------------------

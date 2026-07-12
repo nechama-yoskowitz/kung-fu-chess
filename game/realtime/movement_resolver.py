@@ -1,11 +1,11 @@
-from game.board import move_piece
-from game.constants import (
+from game.model.board import move_piece
+from game.model.constants import (
     EMPTY_CELL,
     PIECE_KING,
     PIECE_PAWN,
     PIECE_QUEEN,
 )
-from game.pieces import get_color, get_type
+from game.model.pieces import get_color, get_type
 from game.realtime.motion import get_airborne_piece_at
 from game.rules.rules import pawn_promotion_row
 

@@ -1,10 +1,10 @@
-from game.constants import (
+from game.model.constants import (
     EMPTY_CELL,
     MOVEMENT_RULES,
     SLIDING_PIECES,
     WHITE,
 )
-from game.pieces import get_color, get_type
+from game.model.pieces import get_color, get_type
 
 
 def is_legal_move(piece, from_row, from_col, to_row, to_col):

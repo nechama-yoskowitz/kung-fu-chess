@@ -1,6 +1,6 @@
-from game.board import is_inside_board
-from game.constants import EMPTY_CELL, PIECE_PAWN
-from game.pieces import get_type, same_color
+from game.model.board import is_inside_board
+from game.model.constants import EMPTY_CELL, PIECE_PAWN
+from game.model.pieces import get_type, same_color
 from game.rules.rules import (
     is_legal_move,
     is_legal_pawn_move,

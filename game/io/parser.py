@@ -1,6 +1,6 @@
 import sys
 
-from game.constants import (
+from game.model.constants import (
     VALID_TOKENS,
     ERROR_ROW_WIDTH_MISMATCH,
     ERROR_UNKNOWN_TOKEN,

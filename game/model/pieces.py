@@ -1,4 +1,4 @@
-from game.constants import EMPTY_CELL
+from game.model.constants import EMPTY_CELL
 
 
 def get_color(piece):

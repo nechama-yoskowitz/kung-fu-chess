@@ -1,7 +1,9 @@
-from game.parser import parse_input
-from game.parser import validate_board
-from game.commands import process_commands
+from game.io.parser import (
+    parse_input,
+    validate_board,
+)
 
+from game.io.command_runner import process_commands
 
 def main():
     board, commands = parse_input()

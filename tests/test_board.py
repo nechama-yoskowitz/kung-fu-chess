@@ -1,9 +1,9 @@
 import pytest
 from io import StringIO
 from unittest.mock import patch
-from game.board import is_inside_board, move_piece
-from game.parser import validate_board
-from game.board_printer import print_board
+from game.model.board import is_inside_board, move_piece
+from game.io.parser import validate_board
+from game.io.board_printer import print_board
 
 # ---------------------------------------------------------------------------
 # helpers
