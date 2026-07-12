@@ -47,11 +47,12 @@ class Controller:
 
         clicked_piece = self.engine.board[row][col]
 
-        # First click: select a non-moving piece.
+        # First click: select a non-moving, non-resting piece.
         if self.selected is None:
             if (
                 clicked_piece != EMPTY_CELL
                 and not self.engine.is_piece_moving_at(row, col)
+                and not self.engine.is_piece_resting_at(row, col)
             ):
                 self.selected = (row, col)
 
@@ -65,7 +66,10 @@ class Controller:
             clicked_piece != EMPTY_CELL
             and same_color(selected_piece, clicked_piece)
         ):
-            if not self.engine.is_piece_moving_at(row, col):
+            if (
+                not self.engine.is_piece_moving_at(row, col)
+                and not self.engine.is_piece_resting_at(row, col)
+            ):
                 self.selected = (row, col)
 
             return False

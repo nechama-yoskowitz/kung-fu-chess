@@ -46,3 +46,27 @@ def get_airborne_piece_at(active_jumps, row, col):
             return jump
 
     return None
+
+
+@dataclass(frozen=True)
+class ActiveCooldown:
+    """A piece that is resting after arriving at its destination."""
+
+    piece: str
+    row: int
+    col: int
+    available_at: int
+
+
+def is_piece_resting(active_cooldowns, row, col, board):
+    """
+    Return True if a resting piece occupies the given cell.
+
+    Checks that the piece token still matches the board to avoid
+    'orphaned' cooldowns after a capture.
+    """
+    for cd in active_cooldowns:
+        if cd.row == row and cd.col == col:
+            if board[row][col] == cd.piece:
+                return True
+    return False

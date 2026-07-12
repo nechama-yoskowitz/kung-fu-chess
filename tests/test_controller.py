@@ -33,6 +33,7 @@ class FakeEngine:
     def __init__(self, board):
         self.board = board
         self._moving_cells = set()
+        self._resting_cells = set()
         self._move_accepted = True
         self._jump_accepted = True
         self.last_move_request = None
@@ -40,6 +41,9 @@ class FakeEngine:
 
     def is_piece_moving_at(self, row, col):
         return (row, col) in self._moving_cells
+
+    def is_piece_resting_at(self, row, col):
+        return (row, col) in self._resting_cells
 
     def request_move(self, from_row, from_col, to_row, to_col):
         self.last_move_request = (from_row, from_col, to_row, to_col)

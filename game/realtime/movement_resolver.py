@@ -29,13 +29,17 @@ def apply_arrived_moves(
     Resolve every pending move that reached its arrival time.
 
     Returns:
-        (still_pending, game_over, active_jumps)
+        (still_pending, game_over, active_jumps, arrived_cells)
+
+    arrived_cells is a list of (piece, row, col) tuples for pieces
+    that successfully landed at their destination.
     """
     if active_jumps is None:
         active_jumps = []
 
     still_pending = []
     game_over = False
+    arrived_cells = []
 
     for move in pending_moves:
         if move.arrive_at > clock:
@@ -78,10 +82,15 @@ def apply_arrived_moves(
 
         _apply_pawn_promotion(board, move)
 
+        # Record successful arrival (use the piece now at destination
+        # which may have been promoted).
+        landed_piece = board[move.to_row][move.to_col]
+        arrived_cells.append((landed_piece, move.to_row, move.to_col))
+
         if _is_king(captured_piece):
             game_over = True
 
-    return still_pending, game_over, active_jumps
+    return still_pending, game_over, active_jumps, arrived_cells
 
 
 def _apply_pawn_promotion(board, move):

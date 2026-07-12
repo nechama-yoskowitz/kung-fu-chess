@@ -57,6 +57,12 @@ class GameEngine:
                 reason="game_over",
             )
 
+        if self.arbiter.is_piece_resting_at(from_row, from_col):
+            return MoveResult(
+                is_accepted=False,
+                reason="piece_resting",
+            )
+
         if self.arbiter.is_destination_claimed(
             to_row,
             to_col,
@@ -105,6 +111,9 @@ class GameEngine:
         if self.game_over:
             return False
 
+        if self.arbiter.is_piece_resting_at(row, col):
+            return False
+
         validation = self.rule_engine.validate_jump(
             self.board,
             row,
@@ -125,6 +134,10 @@ class GameEngine:
             row,
             col,
         )
+
+    def is_piece_resting_at(self, row, col):
+        """Return True if the piece at the cell is in cooldown."""
+        return self.arbiter.is_piece_resting_at(row, col)
 
     def handle_wait(self, ms):
         """Advance simulated time and resolve completed actions."""

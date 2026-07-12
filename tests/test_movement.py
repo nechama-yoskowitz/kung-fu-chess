@@ -4,7 +4,7 @@ from game.realtime.movement_resolver import apply_arrived_moves
 from game.io.command_runner import process_commands
 from game.input.controller import Controller
 from game.engine.game_engine import GameEngine
-from game.model.constants import MOVE_DURATION_MS
+from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ def make_move(piece, from_row, from_col, to_row, to_col, arrive_at):
 def test_move_does_not_arrive_before_time():
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=999)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=999)
     assert board[0][0] == "wR"
     assert board[0][2] == "."
     assert len(remaining) == 1
@@ -38,7 +38,7 @@ def test_move_arrives_exactly_at_time():
     # arrive_at is inclusive: the piece lands exactly when clock == arrive_at
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
     assert len(remaining) == 0
@@ -48,7 +48,7 @@ def test_move_arrives_exactly_at_time():
 def test_move_arrives_after_time():
     board = make_board(["wR . ."])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1001)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1001)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
     assert len(remaining) == 0
@@ -61,7 +61,7 @@ def test_only_arrived_moves_are_applied():
         make_move("wR", 0, 0, 0, 1, arrive_at=500),
         make_move("wB", 0, 4, 0, 3, arrive_at=2000),
     ]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     # wR has arrived (arrive_at=500 < clock=1000)
     assert board[0][1] == "wR"
     assert board[0][0] == "."
@@ -81,7 +81,7 @@ def test_multiple_moves_arrive_at_same_time():
         make_move("wR", 0, 0, 0, 2, arrive_at=1000),
         make_move("wB", 1, 0, 1, 2, arrive_at=1000),
     ]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert board[0][2] == "wR"
     assert board[1][2] == "wB"
     assert len(remaining) == 0
@@ -98,7 +98,7 @@ def test_arrived_move_captures_enemy():
 
 def test_apply_with_empty_pending_list():
     board = make_board(["wR . ."])
-    remaining, game_over, _ = apply_arrived_moves(board, [], clock=5000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, [], clock=5000)
     assert board[0][0] == "wR"
     assert remaining == []
     assert game_over is False
@@ -318,12 +318,13 @@ def test_redirect_ignored_while_piece_is_moving(capsys):
     assert output == ". . . . wR"
 
 
-def test_piece_movable_again_immediately_after_arrival(capsys):
+def test_piece_movable_again_after_cooldown(capsys):
     board = make_board(["wR . . . ."])
     commands = [
         "click 0 0",
         "click 200 0",  # move to col 2, arrive_at=2000
-        f"wait {2 * MOVE_DURATION_MS}",  # piece arrives at col 2
+        f"wait {2 * MOVE_DURATION_MS}",  # piece arrives at col 2, enters cooldown
+        f"wait {COOLDOWN_DURATION_MS}",  # cooldown expires
         "click 200 0",  # select wR at its new position
         "click 400 0",  # move to col 4
         f"wait {2 * MOVE_DURATION_MS}",
@@ -462,14 +463,15 @@ def test_same_color_can_move_concurrently(capsys):
     assert lines[1] == ". . . . wR"
 
 
-def test_no_cooldown_after_arrival(capsys):
-    # Immediately after wR arrives, the same piece can move again.
+def test_piece_movable_after_cooldown_expires(capsys):
+    # After wR arrives and cooldown expires, the same piece can move again.
     board = make_board(["wR . ."])
     commands = [
         "click 50 50",    # select wR
         "click 150 50",   # wR → col 1, arrive_at=1000
-        f"wait {MOVE_DURATION_MS}",   # wR lands at col 1
-        "click 150 50",   # select wR at col 1 — no cooldown
+        f"wait {MOVE_DURATION_MS}",         # wR lands at col 1, enters cooldown
+        f"wait {COOLDOWN_DURATION_MS}",     # cooldown expires
+        "click 150 50",   # select wR at col 1
         "click 250 50",   # wR → col 2
         f"wait {MOVE_DURATION_MS}",
         "print board",
@@ -674,12 +676,13 @@ def test_premove_does_not_execute_in_common_route(capsys):
 
 
 def test_premove_executes_after_first_arrives(capsys):
-    # A second move IS possible if it is issued after the first arrives.
+    # A second move IS possible if it is issued after the first arrives and cooldown expires.
     board = make_board(["wR . ."])
     commands = [
         "click 50 50",
         "click 150 50",   # wR → col=1, arrive_at=1000
-        "wait 1000",      # wR lands
+        "wait 1000",      # wR lands, cooldown starts
+        f"wait {COOLDOWN_DURATION_MS}",  # cooldown expires
         "click 150 50",   # select wR at new position
         "click 250 50",   # wR → col=2
         "wait 1000",
@@ -783,7 +786,7 @@ def test_capturing_enemy_king_returns_game_over():
     # wR arrives at the square occupied by bK → game_over = True
     board = make_board(["wR . bK"])
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is True
     assert board[0][2] == "wR"   # king captured, wR now there
 
@@ -791,7 +794,7 @@ def test_capturing_enemy_king_returns_game_over():
 def test_capturing_non_king_does_not_trigger_game_over():
     board = make_board(["wR bP ."])
     pending = [make_move("wR", 0, 0, 0, 1, arrive_at=1000)]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is False
 
 
@@ -803,7 +806,7 @@ def test_game_over_pending_moves_cleared():
         make_move("wR", 0, 0, 0, 1, arrive_at=1000),   # captures bK → game over
         make_move("wB", 1, 0, 1, 1, arrive_at=1000),   # should be cancelled
     ]
-    remaining, game_over, _ = apply_arrived_moves(board, pending, clock=1000)
+    remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is True
     assert len(remaining) == 0
     assert board[1][0] == "wB"   # wB never moved
@@ -1133,7 +1136,7 @@ def test_airborne_capture_only_enemy_direct():
     # Same color → should NOT trigger airborne capture; normal move_piece occurs.
     active_jumps = [ActiveJump(piece="wR", row=0, col=2, expires_at=2000)]
     pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    remaining, game_over, jumps = apply_arrived_moves(board, pending, clock=1000, active_jumps=active_jumps)
+    remaining, game_over, jumps, _ = apply_arrived_moves(board, pending, clock=1000, active_jumps=active_jumps)
     # Friendly piece: airborne capture does NOT apply. Normal move executes.
     assert board[0][2] == "wR"
     assert board[0][0] == "."
