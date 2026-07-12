@@ -1,5 +1,6 @@
+from game.input.board_mapper import BoardMapper
 from game.model.board import is_inside_board
-from game.model.constants import CELL_SIZE, EMPTY_CELL
+from game.model.constants import EMPTY_CELL
 from game.model.pieces import same_color
 
 
@@ -8,17 +9,19 @@ class Controller:
     Translate user input into game requests.
 
     The controller is responsible for:
-    - converting pixels to board cells,
     - remembering the selected cell,
     - interpreting the first and second clicks,
     - forwarding move and jump requests to the GameEngine.
 
-    It does not validate chess rules and does not modify game state directly.
+    Pixel-to-cell conversion is delegated to BoardMapper.
+    The controller does not validate chess rules
+    and does not modify the board directly.
     """
 
-    def __init__(self, engine):
+    def __init__(self, engine, board_mapper=None):
         self.engine = engine
         self.selected = None
+        self.board_mapper = board_mapper or BoardMapper()
 
     def click(self, x, y):
         """
@@ -30,19 +33,21 @@ class Controller:
         Returns True if a move was accepted,
         otherwise returns False.
         """
-        row, col = self._pixel_to_cell(x, y)
+        row, col = self.board_mapper.pixel_to_cell(x, y)
 
         if not is_inside_board(
             self.engine.board,
             row,
             col,
         ):
-            self.selected = None
+            if self.selected is not None:
+                self.selected = None
+
             return False
 
         clicked_piece = self.engine.board[row][col]
 
-        # First click: select a piece.
+        # First click: select a non-moving piece.
         if self.selected is None:
             if (
                 clicked_piece != EMPTY_CELL
@@ -65,15 +70,17 @@ class Controller:
 
             return False
 
-        # Every second click completes the current selection attempt.
+        # Every second click inside the board completes the selection attempt.
         self.selected = None
 
-        return self.engine.request_move(
+        result = self.engine.request_move(
             selected_row,
             selected_col,
             row,
             col,
         )
+
+        return result
 
     def jump(self, x, y):
         """
@@ -82,14 +89,13 @@ class Controller:
         Returns True if the jump was accepted,
         otherwise returns False.
         """
-        row, col = self._pixel_to_cell(x, y)
+        row, col = self.board_mapper.pixel_to_cell(x, y)
+
+        if not is_inside_board(
+            self.engine.board,
+            row,
+            col,
+        ):
+            return False
 
         return self.engine.request_jump(row, col)
-
-    @staticmethod
-    def _pixel_to_cell(x, y):
-        """Convert pixel coordinates to board row and column."""
-        row = y // CELL_SIZE
-        col = x // CELL_SIZE
-
-        return row, col

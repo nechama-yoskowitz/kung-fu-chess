@@ -1,6 +1,6 @@
 from game.io.board_printer import print_board
 from game.engine.game_engine import GameEngine
-from game.io.controller import Controller
+from game.input.controller import Controller
 
 
 def process_commands(board, commands):
