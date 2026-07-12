@@ -4,13 +4,15 @@ from game.constants import (
     JUMP_DURATION_MS,
     MOVE_DURATION_MS,
 )
-from game.movement import (
+from game.realtime.motion import (
     ActiveJump,
     PendingMove,
-    apply_arrived_moves,
-    expire_jumps,
     is_destination_claimed,
     is_piece_moving,
+)
+from game.realtime.movement_resolver import (
+    apply_arrived_moves,
+    expire_jumps,
 )
 from game.rules.rule_engine import RuleEngine
 

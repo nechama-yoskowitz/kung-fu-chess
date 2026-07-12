@@ -1,5 +1,6 @@
 import pytest
-from game.movement import PendingMove, apply_arrived_moves, is_piece_moving
+from game.realtime.motion import PendingMove, is_piece_moving
+from game.realtime.movement_resolver import apply_arrived_moves
 from game.commands import process_commands
 from game.input.controller import Controller
 from game.engine.game_engine import GameEngine
@@ -1126,7 +1127,7 @@ def test_airborne_capture_only_enemy(capsys):
 
 def test_airborne_capture_only_enemy_direct():
     """Direct test: apply_arrived_moves does NOT destroy a friendly arriving piece."""
-    from game.movement import ActiveJump
+    from game.realtime.motion import ActiveJump
     board = make_board(["wR . wR"])
     # wR at (0,2) is airborne. wR at (0,0) arrives at (0,2).
     # Same color → should NOT trigger airborne capture; normal move_piece occurs.
