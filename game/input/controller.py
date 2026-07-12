@@ -1,133 +1,95 @@
 from game.board import is_inside_board
-from game.constants import (
-    CELL_SIZE,
-    EMPTY_CELL,
-    JUMP_DURATION_MS,
-    MOVE_DURATION_MS,
-)
-from game.movement import (
-    ActiveJump,
-    PendingMove,
-    is_destination_claimed,
-    is_piece_moving,
-)
+from game.constants import CELL_SIZE, EMPTY_CELL
 from game.pieces import same_color
-from game.rules.rule_engine import RuleEngine
 
 
 class Controller:
     """
-    Translate user input into game actions.
+    Translate user input into game requests.
 
-    The controller owns the currently selected board cell.
-    It does not modify the board directly.
+    The controller is responsible for:
+    - converting pixels to board cells,
+    - remembering the selected cell,
+    - interpreting the first and second clicks,
+    - forwarding move and jump requests to the GameEngine.
+
+    It does not validate chess rules and does not modify game state directly.
     """
 
-    def __init__(self, board):
-        self.board = board
+    def __init__(self, engine):
+        self.engine = engine
         self.selected = None
-        self.rule_engine = RuleEngine()
 
-    def click(self, pending_moves, x, y, clock):
+    def click(self, x, y):
         """
-        Process a click at pixel coordinates (x, y).
+        Process a click at pixel coordinates.
 
-        Returns a new PendingMove when a legal move is requested,
-        otherwise returns None.
+        The first valid click selects a piece.
+        The second click requests a move through the GameEngine.
 
-        The board is not modified here.
+        Returns True if a move was accepted,
+        otherwise returns False.
         """
-        row = y // CELL_SIZE
-        col = x // CELL_SIZE
+        row, col = self._pixel_to_cell(x, y)
 
-        if not is_inside_board(self.board, row, col):
+        if not is_inside_board(
+            self.engine.board,
+            row,
+            col,
+        ):
             self.selected = None
-            return None
+            return False
 
-        clicked_cell = self.board[row][col]
+        clicked_piece = self.engine.board[row][col]
 
-        # No piece selected yet.
+        # First click: select a piece.
         if self.selected is None:
             if (
-                clicked_cell != EMPTY_CELL
-                and not is_piece_moving(pending_moves, row, col)
+                clicked_piece != EMPTY_CELL
+                and not self.engine.is_piece_moving_at(row, col)
             ):
                 self.selected = (row, col)
 
-            return None
+            return False
 
         selected_row, selected_col = self.selected
-        selected_piece = self.board[selected_row][selected_col]
+        selected_piece = self.engine.board[selected_row][selected_col]
 
-        # Clicking a friendly piece switches the selection.
+        # Clicking another friendly piece switches the selection.
         if (
-            clicked_cell != EMPTY_CELL
-            and same_color(selected_piece, clicked_cell)
+            clicked_piece != EMPTY_CELL
+            and same_color(selected_piece, clicked_piece)
         ):
-            if not is_piece_moving(pending_moves, row, col):
+            if not self.engine.is_piece_moving_at(row, col):
                 self.selected = (row, col)
 
-            return None
+            return False
 
-        # The second click completes the selection attempt.
+        # Every second click completes the current selection attempt.
         self.selected = None
 
-        if not self.rule_engine.validate_move(
-            self.board,
+        return self.engine.request_move(
             selected_row,
             selected_col,
             row,
             col,
-        ):
-            return None
-
-        if is_destination_claimed(pending_moves, row, col):
-            return None
-
-        return PendingMove(
-            piece=selected_piece,
-            from_row=selected_row,
-            from_col=selected_col,
-            to_row=row,
-            to_col=col,
-            arrive_at=clock + MOVE_DURATION_MS,
         )
 
-    def jump(self, pending_moves, active_jumps, x, y, clock):
+    def jump(self, x, y):
         """
-        Process a jump command at pixel coordinates (x, y).
+        Process a jump command at pixel coordinates.
 
-        Returns a new ActiveJump when the jump is valid,
-        otherwise returns None.
+        Returns True if the jump was accepted,
+        otherwise returns False.
         """
+        row, col = self._pixel_to_cell(x, y)
+
+        return self.engine.request_jump(row, col)
+
+    @staticmethod
+    def _pixel_to_cell(x, y):
+        """Convert pixel coordinates to board row and column."""
         row = y // CELL_SIZE
         col = x // CELL_SIZE
 
-        if not is_inside_board(self.board, row, col):
-            return None
-
-        piece = self.board[row][col]
-
-        if piece == EMPTY_CELL:
-            return None
-
-        if is_piece_moving(pending_moves, row, col):
-            return None
-
-        if self._is_airborne(active_jumps, row, col):
-            return None
-
-        return ActiveJump(
-            piece=piece,
-            row=row,
-            col=col,
-            expires_at=clock + JUMP_DURATION_MS,
-        )
-
-    @staticmethod
-    def _is_airborne(active_jumps, row, col):
-        """Return True if the piece at the given cell is already airborne."""
-        return any(
-            jump.row == row and jump.col == col
-            for jump in active_jumps
-        )
+        return row, col

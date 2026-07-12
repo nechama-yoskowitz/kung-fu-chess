@@ -2,6 +2,7 @@ import pytest
 from game.movement import PendingMove, apply_arrived_moves, is_piece_moving
 from game.commands import process_commands
 from game.input.controller import Controller
+from game.engine.game_engine import GameEngine
 from game.constants import MOVE_DURATION_MS
 
 
@@ -108,23 +109,27 @@ def test_apply_with_empty_pending_list():
 
 def test_click_legal_move_returns_pending_move():
     board = make_board(["wR . ."])
-    ctrl = Controller(board)
-    pending = ctrl.click([], 0, 0, clock=0)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
+    result = ctrl.click(0, 0)
     # first click selects the piece
     assert ctrl.selected == (0, 0)
-    assert pending is None
-    pending = ctrl.click([], 200, 0, clock=0)
-    assert pending is not None
-    assert pending.piece == "wR"
-    assert pending.to_col == 2
-    assert pending.arrive_at == MOVE_DURATION_MS
+    assert result is False
+    result = ctrl.click(200, 0)
+    assert result is True
+    assert len(engine.pending_moves) == 1
+    move = engine.pending_moves[0]
+    assert move.piece == "wR"
+    assert move.to_col == 2
+    assert move.arrive_at == MOVE_DURATION_MS
 
 
 def test_click_legal_move_does_not_mutate_board():
     board = make_board(["wR . ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
-    ctrl.click([], 200, 0, clock=0)
+    ctrl.click(200, 0)
     # board must be unchanged until the move arrives
     assert board[0][0] == "wR"
     assert board[0][2] == "."
@@ -132,19 +137,23 @@ def test_click_legal_move_does_not_mutate_board():
 
 def test_click_illegal_move_returns_no_pending_move():
     board = make_board(["wR . ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
     # Rook cannot move diagonally
-    pending = ctrl.click([], 100, 100, clock=0)
-    assert pending is None
+    result = ctrl.click(100, 100)
+    assert result is False
+    assert len(engine.pending_moves) == 0
 
 
 def test_click_arrive_at_uses_clock_offset():
     board = make_board(["wR . ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    engine.clock = 500
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
-    pending = ctrl.click([], 200, 0, clock=500)
-    assert pending.arrive_at == 500 + MOVE_DURATION_MS
+    ctrl.click(200, 0)
+    assert engine.pending_moves[0].arrive_at == 500 + MOVE_DURATION_MS
 
 
 # ---------------------------------------------------------------------------
@@ -249,41 +258,43 @@ def test_piece_at_destination_is_not_considered_moving():
 
 def test_cannot_select_moving_piece():
     board = make_board(["wR . ."])
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    engine.pending_moves = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    ctrl = Controller(engine)
     # try to select the rook while it is in flight
-    result = ctrl.click(pending, 0, 0, clock=0)
+    result = ctrl.click(0, 0)
     assert ctrl.selected is None
-    assert result is None
+    assert result is False
 
 
 def test_can_select_piece_after_arrival():
     board = make_board([". . wR"])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
     # move has arrived — pending list is empty
-    result = ctrl.click([], 200, 0, clock=1001)
+    ctrl = Controller(engine)
+    result = ctrl.click(200, 0)
     assert ctrl.selected == (0, 2)
-    assert result is None
+    assert result is False
 
 
 def test_cannot_switch_selection_to_moving_piece():
     board = make_board(["wK wR ."])
-    # wR is moving
-    pending = [make_move("wR", 0, 1, 0, 2, arrive_at=1000)]
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    engine.pending_moves = [make_move("wR", 0, 1, 0, 2, arrive_at=1000)]
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
     # try to switch to wR while it is in flight — selection must stay on wK
-    result = ctrl.click(pending, 100, 0, clock=0)
+    result = ctrl.click(100, 0)
     assert ctrl.selected == (0, 0)
-    assert result is None
+    assert result is False
 
 
 def test_can_switch_selection_to_piece_that_is_not_moving():
     board = make_board(["wK wR ."])
-    pending = []
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
-    ctrl.click(pending, 100, 0, clock=0)
+    ctrl.click(100, 0)
     assert ctrl.selected == (0, 1)
 
 
@@ -325,7 +336,7 @@ def test_piece_movable_again_immediately_after_arrival(capsys):
 # ---------------------------------------------------------------------------
 # Controller.click — validation branches not previously covered
 #
-# These three tests cover the three "return None" paths inside
+# These three tests cover the three "return False" paths inside
 # Controller.click that were added when we wired legality checks into the
 # deferred-movement flow (iteration 6).  Before that, movement was
 # immediate and the same checks lived in a different call path.
@@ -333,36 +344,42 @@ def test_piece_movable_again_immediately_after_arrival(capsys):
 
 def test_illegal_move_for_non_pawn_returns_no_pending():
     # Rook at (0,0) trying to move diagonally — is_legal_move returns False.
-    # Covers the branch: non-pawn, is_legal_move fails → return None
+    # Covers the branch: non-pawn, is_legal_move fails → return False
     board = make_board(["wR . .", ". . .", ". . ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
-    pending = ctrl.click([], 100, 100, clock=0)
+    result = ctrl.click(100, 100)
     assert ctrl.selected is None
-    assert pending is None
+    assert result is False
+    assert len(engine.pending_moves) == 0
 
 
 def test_blocked_path_for_sliding_piece_returns_no_pending():
     # Rook at (0,0) wants to reach (0,2) but (0,1) is occupied.
-    # Covers the branch: sliding piece, is_path_clear fails → return None
+    # Covers the branch: sliding piece, is_path_clear fails → return False
     board = make_board(["wR bP ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (0, 0)
-    pending = ctrl.click([], 200, 0, clock=0)
+    result = ctrl.click(200, 0)
     assert ctrl.selected is None
-    assert pending is None
+    assert result is False
+    assert len(engine.pending_moves) == 0
 
 
 def test_illegal_pawn_move_returns_no_pending():
     # White pawn at (1,0) trying to move sideways — is_legal_pawn_move returns False.
-    # Covers the branch: pawn, is_legal_pawn_move fails → return None
+    # Covers the branch: pawn, is_legal_pawn_move fails → return False
     board = make_board([". . .", "wP . .", ". . ."])
-    ctrl = Controller(board)
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
     ctrl.selected = (1, 0)
     # click on (1,1) — same row, pawn cannot move sideways
-    pending = ctrl.click([], 100, 100, clock=0)
+    result = ctrl.click(100, 100)
     assert ctrl.selected is None
-    assert pending is None
+    assert result is False
+    assert len(engine.pending_moves) == 0
 
 
 # ---------------------------------------------------------------------------
