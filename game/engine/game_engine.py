@@ -44,12 +44,7 @@ class GameEngine:
         to_row,
         to_col,
     ):
-        """
-        Validate and start a requested move.
-
-        Returns True if the move was accepted,
-        otherwise returns False.
-        """
+        """Validate and start a requested move."""
         if self.game_over:
             return False
 
@@ -60,13 +55,15 @@ class GameEngine:
         ):
             return False
 
-        if not self.rule_engine.validate_move(
+        validation = self.rule_engine.validate_move(
             self.board,
             from_row,
             from_col,
             to_row,
             to_col,
-        ):
+        )
+
+        if not validation.is_valid:
             return False
 
         piece = self.board[from_row][from_col]
@@ -81,8 +78,8 @@ class GameEngine:
         )
 
         self.pending_moves.append(pending_move)
-        return True
 
+        return True
     def request_jump(self, row, col):
         """
         Validate and start a jump.
