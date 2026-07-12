@@ -80,7 +80,7 @@ class Controller:
             col,
         )
 
-        return result
+        return result.is_accepted
 
     def jump(self, x, y):
         """

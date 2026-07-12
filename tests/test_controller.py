@@ -1,5 +1,6 @@
 import pytest
 from game.input.controller import Controller
+from game.engine.game_engine import MoveResult
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +43,9 @@ class FakeEngine:
 
     def request_move(self, from_row, from_col, to_row, to_col):
         self.last_move_request = (from_row, from_col, to_row, to_col)
-        return self._move_accepted
+        if self._move_accepted:
+            return MoveResult(is_accepted=True, reason="ok")
+        return MoveResult(is_accepted=False, reason="illegal_piece_move")
 
     def request_jump(self, row, col):
         self.last_jump_request = (row, col)

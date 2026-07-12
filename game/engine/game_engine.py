@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from game.model.board import is_inside_board
 from game.model.constants import (
     EMPTY_CELL,
@@ -15,6 +17,14 @@ from game.realtime.movement_resolver import (
     expire_jumps,
 )
 from game.rules.rule_engine import RuleEngine
+
+
+@dataclass(frozen=True)
+class MoveResult:
+    """Result of a move request through the GameEngine."""
+
+    is_accepted: bool
+    reason: str
 
 
 class GameEngine:
@@ -46,14 +56,14 @@ class GameEngine:
     ):
         """Validate and start a requested move."""
         if self.game_over:
-            return False
+            return MoveResult(is_accepted=False, reason="game_over")
 
         if is_destination_claimed(
             self.pending_moves,
             to_row,
             to_col,
         ):
-            return False
+            return MoveResult(is_accepted=False, reason="destination_claimed")
 
         validation = self.rule_engine.validate_move(
             self.board,
@@ -64,7 +74,7 @@ class GameEngine:
         )
 
         if not validation.is_valid:
-            return False
+            return MoveResult(is_accepted=False, reason=validation.reason)
 
         piece = self.board[from_row][from_col]
 
@@ -79,7 +89,8 @@ class GameEngine:
 
         self.pending_moves.append(pending_move)
 
-        return True
+        return MoveResult(is_accepted=True, reason="ok")
+
     def request_jump(self, row, col):
         """
         Validate and start a jump.
