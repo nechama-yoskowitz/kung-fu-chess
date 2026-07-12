@@ -4,7 +4,6 @@ from game.constants import (
     EMPTY_CELL,
     JUMP_DURATION_MS,
     MOVE_DURATION_MS,
-    PIECE_PAWN,
 )
 from game.movement import (
     ActiveJump,
@@ -12,13 +11,8 @@ from game.movement import (
     is_destination_claimed,
     is_piece_moving,
 )
-from game.pieces import get_type, same_color
-from game.rules import (
-    is_legal_move,
-    is_legal_pawn_move,
-    is_path_clear,
-    is_sliding_piece,
-)
+from game.pieces import same_color
+from game.rules.rule_engine import RuleEngine
 
 
 class Controller:
@@ -32,6 +26,7 @@ class Controller:
     def __init__(self, board):
         self.board = board
         self.selected = None
+        self.rule_engine = RuleEngine()
 
     def click(self, pending_moves, x, y, clock):
         """
@@ -46,6 +41,7 @@ class Controller:
         col = x // CELL_SIZE
 
         if not is_inside_board(self.board, row, col):
+            self.selected = None
             return None
 
         clicked_cell = self.board[row][col]
@@ -76,8 +72,8 @@ class Controller:
         # The second click completes the selection attempt.
         self.selected = None
 
-        if not self._is_legal_destination(
-            selected_piece,
+        if not self.rule_engine.validate_move(
+            self.board,
             selected_row,
             selected_col,
             row,
@@ -127,45 +123,6 @@ class Controller:
             col=col,
             expires_at=clock + JUMP_DURATION_MS,
         )
-
-    def _is_legal_destination(
-        self,
-        piece,
-        from_row,
-        from_col,
-        to_row,
-        to_col,
-    ):
-        """Return True if the selected piece may move to the destination."""
-        if get_type(piece) == PIECE_PAWN:
-            return is_legal_pawn_move(
-                self.board,
-                piece,
-                from_row,
-                from_col,
-                to_row,
-                to_col,
-            )
-
-        if not is_legal_move(
-            piece,
-            from_row,
-            from_col,
-            to_row,
-            to_col,
-        ):
-            return False
-
-        if is_sliding_piece(piece):
-            return is_path_clear(
-                self.board,
-                from_row,
-                from_col,
-                to_row,
-                to_col,
-            )
-
-        return True
 
     @staticmethod
     def _is_airborne(active_jumps, row, col):

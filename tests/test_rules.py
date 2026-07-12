@@ -1,5 +1,5 @@
 import pytest
-from game.rules import is_legal_move, is_legal_pawn_move, is_path_clear
+from game.rules.rules import is_legal_move, is_legal_pawn_move, is_path_clear
 
 
 # ---------------------------------------------------------------------------

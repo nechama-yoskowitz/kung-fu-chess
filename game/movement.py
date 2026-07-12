@@ -2,7 +2,7 @@ from collections import namedtuple
 
 from game.board import move_piece
 from game.constants import PIECE_KING, PIECE_PAWN, PIECE_QUEEN, EMPTY_CELL
-from game.rules import pawn_promotion_row
+from game.rules.rules import pawn_promotion_row
 from game.pieces import get_type, get_color
 
 
