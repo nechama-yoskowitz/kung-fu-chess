@@ -310,7 +310,7 @@ def test_black_pawn_forward_one_square(engine):
 
 
 def test_pawn_double_step_from_starting_row(engine):
-    # 8-row board. White starting row = 7.
+    # 8-row board. White starting row = 6.
     board = make_board([
         ". . .",
         ". . .",
@@ -318,10 +318,10 @@ def test_pawn_double_step_from_starting_row(engine):
         ". . .",
         ". . .",
         ". . .",
-        ". . .",
         "wP . .",
+        ". . .",
     ])
-    result = engine.validate_move(board, 7, 0, 5, 0)
+    result = engine.validate_move(board, 6, 0, 4, 0)
     assert result.is_valid is True
     assert result.reason == "ok"
 

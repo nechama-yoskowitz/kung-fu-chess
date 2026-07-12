@@ -31,15 +31,18 @@ class RealTimeArbiter:
         """
         Create and store a PendingMove.
 
+        Travel time depends on distance (Chebyshev distance × MOVE_DURATION_MS).
+
         Returns True if the motion was started successfully.
         """
+        distance = max(abs(to_row - from_row), abs(to_col - from_col))
         pending_move = PendingMove(
             piece=piece,
             from_row=from_row,
             from_col=from_col,
             to_row=to_row,
             to_col=to_col,
-            arrive_at=self.clock + MOVE_DURATION_MS,
+            arrive_at=self.clock + distance * MOVE_DURATION_MS,
         )
         self.pending_moves.append(pending_move)
         return True

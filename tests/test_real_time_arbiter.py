@@ -46,14 +46,14 @@ def test_start_motion_creates_one_pending_move():
     assert move.from_col == 0
     assert move.to_row == 0
     assert move.to_col == 4
-    assert move.arrive_at == MOVE_DURATION_MS
+    assert move.arrive_at == 4 * MOVE_DURATION_MS
 
 
 def test_start_motion_uses_current_clock():
     arbiter = RealTimeArbiter()
     arbiter.clock = 500
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    assert arbiter.pending_moves[0].arrive_at == 500 + MOVE_DURATION_MS
+    assert arbiter.pending_moves[0].arrive_at == 500 + 2 * MOVE_DURATION_MS
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def test_advance_time_returns_false_when_no_game_over():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    result = arbiter.advance_time(board, MOVE_DURATION_MS)
+    result = arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     assert result is False
 
 
@@ -159,7 +159,7 @@ def test_move_does_not_arrive_before_time():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    arbiter.advance_time(board, MOVE_DURATION_MS - 1)
+    arbiter.advance_time(board, 2 * MOVE_DURATION_MS - 1)
     # Piece still at source
     assert board[0][0] == "wR"
     assert board[0][2] == "."
@@ -174,7 +174,7 @@ def test_move_arrives_exactly_at_time():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    arbiter.advance_time(board, MOVE_DURATION_MS)
+    arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     # Piece has arrived
     assert board[0][0] == "."
     assert board[0][2] == "wR"
@@ -211,7 +211,7 @@ def test_capture_resolved_on_arrival():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . bP"])
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    arbiter.advance_time(board, MOVE_DURATION_MS)
+    arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     assert board[0][2] == "wR"
     assert board[0][0] == "."
 
@@ -224,7 +224,7 @@ def test_king_capture_reports_game_over():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . bK"])
     arbiter.start_motion("wR", 0, 0, 0, 2)
-    game_over = arbiter.advance_time(board, MOVE_DURATION_MS)
+    game_over = arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     assert game_over is True
     assert board[0][2] == "wR"
 
@@ -234,7 +234,7 @@ def test_king_capture_clears_pending_moves():
     board = make_board(["wR . bK", "wB . . "])
     arbiter.start_motion("wR", 0, 0, 0, 2)
     arbiter.start_motion("wB", 1, 0, 1, 2)
-    arbiter.advance_time(board, MOVE_DURATION_MS)
+    arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     # wR captures king → game over → wB cancelled
     assert len(arbiter.pending_moves) == 0
     assert board[1][0] == "wB"  # wB never moved

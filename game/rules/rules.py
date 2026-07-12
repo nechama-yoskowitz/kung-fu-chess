@@ -29,13 +29,13 @@ def pawn_starting_row(board, color):
     """
     Return the starting row index for a pawn of the given color.
 
-    White pawns start on the last row.
-    Black pawns start on the first row.
+    White pawns start one row above the bottom edge.
+    Black pawns start one row below the top edge.
     """
     if color == WHITE:
-        return len(board) - 1
+        return len(board) - 2
 
-    return 0
+    return 1
 
 
 def pawn_promotion_row(board, color):
