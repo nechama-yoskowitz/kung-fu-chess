@@ -27,6 +27,22 @@ class MoveValidation:
     reason: str
 
 
+@dataclass(frozen=True)
+class JumpValidation:
+    """
+    Result returned by RuleEngine after validating a jump request.
+
+    is_valid:
+        True when the jump is allowed.
+
+    reason:
+        A stable machine-readable explanation.
+    """
+
+    is_valid: bool
+    reason: str
+
+
 class RuleEngine:
     """Validate requested moves without modifying the board."""
 
@@ -118,6 +134,56 @@ class RuleEngine:
             )
 
         return MoveValidation(
+            is_valid=True,
+            reason="ok",
+        )
+
+    def validate_jump(
+        self,
+        board,
+        row,
+        col,
+        is_piece_moving,
+        is_airborne,
+    ):
+        """
+        Validate a jump request against the current board and realtime state.
+
+        This method is read-only — it never modifies the board or starts a jump.
+
+        Parameters:
+            board: the current board state
+            row, col: target cell
+            is_piece_moving: bool indicating if the piece is currently moving
+            is_airborne: bool indicating if the piece is already airborne
+        """
+        if not is_inside_board(board, row, col):
+            return JumpValidation(
+                is_valid=False,
+                reason="outside_board",
+            )
+
+        piece = board[row][col]
+
+        if piece == EMPTY_CELL:
+            return JumpValidation(
+                is_valid=False,
+                reason="empty_source",
+            )
+
+        if is_piece_moving:
+            return JumpValidation(
+                is_valid=False,
+                reason="piece_moving",
+            )
+
+        if is_airborne:
+            return JumpValidation(
+                is_valid=False,
+                reason="already_airborne",
+            )
+
+        return JumpValidation(
             is_valid=True,
             reason="ok",
         )

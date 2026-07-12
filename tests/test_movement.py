@@ -486,7 +486,7 @@ def test_no_cooldown_after_arrival(capsys):
 # ---------------------------------------------------------------------------
 # T1 & T2: enemy collision — first mover wins
 #
-# How it works: has_any_pending_move_for_color blocks the opposite color from
+# How it works: when both pieces target each other's squares concurrently,
 # starting a move while the first color is in flight.  The second click is
 # therefore ignored and only the first piece arrives.
 # ---------------------------------------------------------------------------

@@ -340,3 +340,58 @@ def test_move_validation_equality():
     a = MoveValidation(is_valid=True, reason="ok")
     b = MoveValidation(is_valid=True, reason="ok")
     assert a == b
+
+
+# ===========================================================================
+# validate_jump
+# ===========================================================================
+
+from game.rules.rule_engine import JumpValidation
+
+
+def test_jump_outside_board_invalid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 5, 0, is_piece_moving=False, is_airborne=False)
+    assert result.is_valid is False
+    assert result.reason == "outside_board"
+
+
+def test_jump_negative_row_invalid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, -1, 0, is_piece_moving=False, is_airborne=False)
+    assert result.is_valid is False
+    assert result.reason == "outside_board"
+
+
+def test_jump_empty_source_invalid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 0, 1, is_piece_moving=False, is_airborne=False)
+    assert result.is_valid is False
+    assert result.reason == "empty_source"
+
+
+def test_jump_piece_moving_invalid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 0, 0, is_piece_moving=True, is_airborne=False)
+    assert result.is_valid is False
+    assert result.reason == "piece_moving"
+
+
+def test_jump_already_airborne_invalid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 0, 0, is_piece_moving=False, is_airborne=True)
+    assert result.is_valid is False
+    assert result.reason == "already_airborne"
+
+
+def test_jump_valid(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 0, 0, is_piece_moving=False, is_airborne=False)
+    assert result.is_valid is True
+    assert result.reason == "ok"
+
+
+def test_jump_validation_is_jump_validation_instance(engine):
+    board = make_board(["wR . ."])
+    result = engine.validate_jump(board, 0, 0, is_piece_moving=False, is_airborne=False)
+    assert isinstance(result, JumpValidation)

@@ -31,11 +31,6 @@ def is_piece_moving(pending_moves, row, col):
     )
 
 
-def has_any_pending_move_for_color(pending_moves, color):
-    """Return True if the color currently has a move in progress."""
-    return any(move.piece[0] == color for move in pending_moves)
-
-
 def is_destination_claimed(pending_moves, row, col):
     """Return True if a pending move is already heading to the cell."""
     return any(

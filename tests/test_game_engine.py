@@ -189,3 +189,56 @@ def test_move_result_equality():
     a = MoveResult(is_accepted=True, reason="ok")
     b = MoveResult(is_accepted=True, reason="ok")
     assert a == b
+
+
+# ===========================================================================
+# Jump validation through GameEngine
+# ===========================================================================
+
+def test_game_over_rejects_jump_before_validation():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    engine.game_over = True
+    result = engine.request_jump(0, 0)
+    assert result is False
+    assert len(engine.active_jumps) == 0
+
+
+def test_invalid_jump_does_not_create_active_jump():
+    board = make_board([". . ."])  # empty — no piece to jump
+    engine = GameEngine(board)
+    result = engine.request_jump(0, 0)
+    assert result is False
+    assert len(engine.active_jumps) == 0
+
+
+def test_valid_jump_creates_exactly_one_active_jump():
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    result = engine.request_jump(0, 0)
+    assert result is True
+    assert len(engine.active_jumps) == 1
+    jump = engine.active_jumps[0]
+    assert jump.piece == "wR"
+    assert jump.row == 0
+    assert jump.col == 0
+
+
+def test_controller_jump_still_returns_bool():
+    from game.input.controller import Controller
+    board = make_board(["wR . ."])
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
+    result = ctrl.jump(50, 50)
+    assert result is True
+    assert isinstance(result, bool)
+
+
+def test_controller_jump_returns_false_on_empty():
+    from game.input.controller import Controller
+    board = make_board([". . ."])
+    engine = GameEngine(board)
+    ctrl = Controller(engine)
+    result = ctrl.jump(50, 50)
+    assert result is False
+    assert isinstance(result, bool)

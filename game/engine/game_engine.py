@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from game.model.board import is_inside_board
-from game.model.constants import EMPTY_CELL
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
 
@@ -107,35 +105,19 @@ class GameEngine:
         if self.game_over:
             return False
 
-        if not is_inside_board(
+        validation = self.rule_engine.validate_jump(
             self.board,
             row,
             col,
-        ):
+            is_piece_moving=self.arbiter.is_piece_moving_at(row, col),
+            is_airborne=self.arbiter.is_airborne_at(row, col),
+        )
+
+        if not validation.is_valid:
             return False
 
         piece = self.board[row][col]
-
-        if piece == EMPTY_CELL:
-            return False
-
-        if self.arbiter.is_piece_moving_at(
-            row,
-            col,
-        ):
-            return False
-
-        if self.arbiter.is_airborne_at(
-            row,
-            col,
-        ):
-            return False
-
-        return self.arbiter.start_jump(
-            piece,
-            row,
-            col,
-        )
+        return self.arbiter.start_jump(piece, row, col)
 
     def is_piece_moving_at(self, row, col):
         """Return True if the piece at the cell currently has an active move."""
