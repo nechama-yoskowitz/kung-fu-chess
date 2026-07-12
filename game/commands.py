@@ -85,15 +85,12 @@ def handle_jump(board, pending_moves, active_jumps, x, y, clock):
 
     cell = board[row][col]
 
-    # Cannot jump empty cell
     if cell == EMPTY_CELL:
         return None
 
-    # Cannot jump a piece that is already moving
     if is_piece_moving(pending_moves, row, col):
         return None
 
-    # Cannot jump if already airborne
     for j in active_jumps:
         if j.row == row and j.col == col:
             return None
@@ -111,54 +108,100 @@ def handle_wait(clock, ms):
     return clock + ms
 
 
+def _update_game_state(board, pending_moves, active_jumps, clock):
+    """
+    Update all time-dependent game state.
+
+    - Expire finished jumps.
+    - Apply moves that reached their destination.
+    - Clear remaining actions if the game ended.
+
+    Returns:
+        (pending_moves, active_jumps, game_over)
+    """
+    active_jumps = expire_jumps(active_jumps, clock)
+
+    pending_moves, game_over, active_jumps = apply_arrived_moves(
+        board,
+        pending_moves,
+        clock,
+        active_jumps,
+    )
+
+    if game_over:
+        pending_moves = []
+        active_jumps = []
+
+    return pending_moves, active_jumps, game_over
+
+
 def process_commands(board, commands):
     """Execute a list of commands against the board."""
-    selected      = None
-    clock         = 0
+    selected = None
+    clock = 0
     pending_moves = []
-    active_jumps  = []
-    game_over     = False
+    active_jumps = []
+    game_over = False
 
     for command in commands:
         parts = command.split()
 
         if command == "print board":
             if not game_over:
-                active_jumps = expire_jumps(active_jumps, clock)
-                pending_moves, game_over, active_jumps = apply_arrived_moves(
-                    board, pending_moves, clock, active_jumps
+                pending_moves, active_jumps, game_over = _update_game_state(
+                    board,
+                    pending_moves,
+                    active_jumps,
+                    clock,
                 )
-                if game_over:
-                    pending_moves = []
-                    active_jumps  = []
             print_board(board)
 
         elif parts[0] == "click":
             if game_over:
                 continue
+
             x = int(parts[1])
             y = int(parts[2])
-            selected, new_move = handle_click(board, pending_moves, selected, x, y, clock)
+
+            selected, new_move = handle_click(
+                board,
+                pending_moves,
+                selected,
+                x,
+                y,
+                clock,
+            )
+
             if new_move is not None:
                 pending_moves.append(new_move)
 
         elif parts[0] == "jump":
             if game_over:
                 continue
+
             x = int(parts[1])
             y = int(parts[2])
-            new_jump = handle_jump(board, pending_moves, active_jumps, x, y, clock)
+
+            new_jump = handle_jump(
+                board,
+                pending_moves,
+                active_jumps,
+                x,
+                y,
+                clock,
+            )
+
             if new_jump is not None:
                 active_jumps.append(new_jump)
 
         elif parts[0] == "wait":
-            ms    = int(parts[1])
+            ms = int(parts[1])
             clock = handle_wait(clock, ms)
+
             if not game_over:
-                active_jumps = expire_jumps(active_jumps, clock)
-                pending_moves, game_over, active_jumps = apply_arrived_moves(
-                    board, pending_moves, clock, active_jumps
+                pending_moves, active_jumps, game_over = _update_game_state(
+                    board,
+                    pending_moves,
+                    active_jumps,
+                    clock,
                 )
-                if game_over:
-                    pending_moves = []
-                    active_jumps  = []
