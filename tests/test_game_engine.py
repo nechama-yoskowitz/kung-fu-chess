@@ -225,7 +225,7 @@ def test_valid_jump_creates_exactly_one_active_jump():
 
 
 def test_controller_jump_still_returns_bool():
-    from game.input.controller import Controller
+    from game.controller.controller import Controller
     board = make_board(["wR . ."])
     engine = GameEngine(board)
     ctrl = Controller(engine)
@@ -235,7 +235,7 @@ def test_controller_jump_still_returns_bool():
 
 
 def test_controller_jump_returns_false_on_empty():
-    from game.input.controller import Controller
+    from game.controller.controller import Controller
     board = make_board([". . ."])
     engine = GameEngine(board)
     ctrl = Controller(engine)

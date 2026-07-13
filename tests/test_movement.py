@@ -2,7 +2,7 @@ import pytest
 from game.realtime.motion import PendingMove, is_piece_moving
 from game.realtime.movement_resolver import apply_arrived_moves
 from game.io.command_runner import process_commands
-from game.input.controller import Controller
+from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
 

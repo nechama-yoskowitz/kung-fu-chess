@@ -1,5 +1,3 @@
-import sys
-
 from game.model.constants import (
     VALID_TOKENS,
     ERROR_ROW_WIDTH_MISMATCH,
@@ -11,41 +9,54 @@ _SECTION_BOARD    = "Board:"
 _SECTION_COMMANDS = "Commands:"
 
 
-def parse_input():
+class GameInputParser:
     """
-    Read stdin and return (board, commands).
-    board    — list of rows, each row a list of token strings
-    commands — list of non-empty command strings
+    Parse game input from any readable source.
+
+    The parser interprets text containing a Board: section
+    and a Commands: section. It does not decide where the text
+    comes from — the caller provides a source object with a
+    read() method (sys.stdin, a file, StringIO, etc.).
     """
-    lines = sys.stdin.read().splitlines()
 
-    board_lines   = []
-    command_lines = []
+    def parse(self, source):
+        """
+        Parse from source and return (board, commands).
 
-    in_board    = False
-    in_commands = False
+        source — any object supporting read() that returns a string.
+        board  — list of rows, each row a list of token strings.
+        commands — list of non-empty command strings.
+        """
+        lines = source.read().splitlines()
 
-    for raw_line in lines:
-        line = raw_line.strip()
+        board_lines   = []
+        command_lines = []
 
-        if line == _SECTION_BOARD:
-            in_board    = True
-            in_commands = False
-            continue
+        in_board    = False
+        in_commands = False
 
-        if line == _SECTION_COMMANDS:
-            in_board    = False
-            in_commands = True
-            continue
+        for raw_line in lines:
+            line = raw_line.strip()
 
-        if in_board:
-            board_lines.append(line)
-        elif in_commands and line:
-            command_lines.append(line)
+            if line == _SECTION_BOARD:
+                in_board    = True
+                in_commands = False
+                continue
 
-    board = [line.split() for line in board_lines]
+            if line == _SECTION_COMMANDS:
+                in_board    = False
+                in_commands = True
+                continue
 
-    return board, command_lines
+            if in_board:
+                board_lines.append(line)
+            elif in_commands and line:
+                command_lines.append(line)
+
+        board = [line.split() for line in board_lines]
+
+        return board, command_lines
+
 
 def validate_board(board):
     """
@@ -67,5 +78,3 @@ def validate_board(board):
                 return False
 
     return True
-
-

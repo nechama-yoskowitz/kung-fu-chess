@@ -1,10 +1,9 @@
 from game.model.constants import (
-    EMPTY_CELL,
     MOVEMENT_RULES,
     SLIDING_PIECES,
     WHITE,
 )
-from game.model.pieces import get_color, get_type
+from game.model.pieces import get_color, get_type, is_empty
 
 
 def is_legal_move(piece, from_row, from_col, to_row, to_col):
@@ -64,11 +63,11 @@ def is_legal_pawn_move(
 
     # One square forward: the destination must be empty.
     if row_diff == direction and col_diff == 0:
-        return target == EMPTY_CELL
+        return is_empty(target)
 
     # Diagonal capture: the destination must contain an enemy piece.
     if row_diff == direction and abs(col_diff) == 1:
-        return target != EMPTY_CELL and target[0] != color
+        return not is_empty(target) and get_color(target) != color
 
     # Two squares forward: only from the starting row,
     # with an empty destination and a clear path.
@@ -76,7 +75,7 @@ def is_legal_pawn_move(
         if from_row != pawn_starting_row(board, color):
             return False
 
-        if target != EMPTY_CELL:
+        if not is_empty(target):
             return False
 
         return is_path_clear(
@@ -110,7 +109,7 @@ def is_path_clear(
     current_col = from_col + col_step
 
     while (current_row, current_col) != (to_row, to_col):
-        if board[current_row][current_col] != EMPTY_CELL:
+        if not is_empty(board[current_row][current_col]):
             return False
 
         current_row += row_step

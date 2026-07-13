@@ -1,12 +1,12 @@
-from game.io.parser import (
-    parse_input,
-    validate_board,
-)
+import sys
 
+from game.io.parser import GameInputParser, validate_board
 from game.io.command_runner import process_commands
 
+
 def main():
-    board, commands = parse_input()
+    parser = GameInputParser()
+    board, commands = parser.parse(sys.stdin)
 
     if not validate_board(board):
         return

@@ -1,5 +1,5 @@
 import pytest
-from game.input.controller import Controller
+from game.controller.controller import Controller
 from game.engine.game_engine import MoveResult
 
 

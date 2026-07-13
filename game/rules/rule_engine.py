@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 
 from game.model.board import is_inside_board
-from game.model.constants import EMPTY_CELL, PIECE_PAWN
-from game.model.pieces import get_type, same_color
+from game.model.pieces import get_type, same_color, is_empty, is_pawn
 from game.rules.rules import (
     is_legal_move,
     is_legal_pawn_move,
@@ -73,7 +72,7 @@ class RuleEngine:
 
         piece = board[from_row][from_col]
 
-        if piece == EMPTY_CELL:
+        if is_empty(piece):
             return MoveValidation(
                 is_valid=False,
                 reason="empty_source",
@@ -81,13 +80,13 @@ class RuleEngine:
 
         target = board[to_row][to_col]
 
-        if target != EMPTY_CELL and same_color(piece, target):
+        if not is_empty(target) and same_color(piece, target):
             return MoveValidation(
                 is_valid=False,
                 reason="friendly_destination",
             )
 
-        if get_type(piece) == PIECE_PAWN:
+        if is_pawn(piece):
             if not is_legal_pawn_move(
                 board,
                 piece,
@@ -165,7 +164,7 @@ class RuleEngine:
 
         piece = board[row][col]
 
-        if piece == EMPTY_CELL:
+        if is_empty(piece):
             return JumpValidation(
                 is_valid=False,
                 reason="empty_source",

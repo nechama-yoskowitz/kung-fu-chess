@@ -1,11 +1,9 @@
 from game.model.board import move_piece
 from game.model.constants import (
     EMPTY_CELL,
-    PIECE_KING,
-    PIECE_PAWN,
     PIECE_QUEEN,
 )
-from game.model.pieces import get_color, get_type
+from game.model.pieces import get_color, get_type, is_king, is_pawn, make_piece
 from game.realtime.motion import get_airborne_piece_at
 from game.rules.rules import pawn_promotion_row
 
@@ -61,7 +59,7 @@ def apply_arrived_moves(
 
         if (
             airborne is not None
-            and airborne.piece[0] != move.piece[0]
+            and get_color(airborne.piece) != get_color(move.piece)
         ):
             board[move.from_row][move.from_col] = EMPTY_CELL
 
@@ -95,15 +93,15 @@ def apply_arrived_moves(
 
 def _apply_pawn_promotion(board, move):
     """Promote a pawn that reached the final row to a queen."""
-    if get_type(move.piece) != PIECE_PAWN:
+    if not is_pawn(move.piece):
         return
 
     color = get_color(move.piece)
 
     if move.to_row == pawn_promotion_row(board, color):
-        board[move.to_row][move.to_col] = color + PIECE_QUEEN
+        board[move.to_row][move.to_col] = make_piece(color, PIECE_QUEEN)
 
 
 def _is_king(piece):
     """Return True if the token represents a king."""
-    return len(piece) == 2 and piece[1] == PIECE_KING
+    return is_king(piece)

@@ -1,7 +1,6 @@
-from game.input.board_mapper import BoardMapper
+from game.model.board_mapper import BoardMapper
 from game.model.board import is_inside_board
-from game.model.constants import EMPTY_CELL
-from game.model.pieces import same_color
+from game.model.pieces import same_color, is_empty
 
 
 class Controller:
@@ -50,7 +49,7 @@ class Controller:
         # First click: select a non-moving, non-resting piece.
         if self.selected is None:
             if (
-                clicked_piece != EMPTY_CELL
+                not is_empty(clicked_piece)
                 and not self.engine.is_piece_moving_at(row, col)
                 and not self.engine.is_piece_resting_at(row, col)
             ):
@@ -63,7 +62,7 @@ class Controller:
 
         # Clicking another friendly piece switches the selection.
         if (
-            clicked_piece != EMPTY_CELL
+            not is_empty(clicked_piece)
             and same_color(selected_piece, clicked_piece)
         ):
             if (

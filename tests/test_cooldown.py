@@ -6,7 +6,7 @@ during which it cannot be selected, moved, or jumped.
 """
 import pytest
 from game.engine.game_engine import GameEngine, MoveResult
-from game.input.controller import Controller
+from game.controller.controller import Controller
 from game.io.command_runner import process_commands
 from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
 from game.realtime.real_time_arbiter import RealTimeArbiter
