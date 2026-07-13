@@ -63,15 +63,6 @@ class GameEngine:
                 reason="piece_resting",
             )
 
-        if self.arbiter.is_destination_claimed(
-            to_row,
-            to_col,
-        ):
-            return MoveResult(
-                is_accepted=False,
-                reason="destination_claimed",
-            )
-
         validation = self.rule_engine.validate_move(
             self.board,
             from_row,

@@ -108,7 +108,7 @@ def test_move_still_in_flight_does_not_create_cooldown():
 def test_cancelled_move_does_not_create_cooldown():
     arbiter = RealTimeArbiter()
     board = make_board([". . ."])  # piece already gone from source
-    arbiter.pending_moves = [PendingMove("wR", 0, 0, 0, 2, arrive_at=1000)]
+    arbiter.pending_moves = [PendingMove("wR", 0, 0, 0, 2, started_at=0, arrive_at=1000, sequence_id=0)]
     arbiter.advance_time(board, 1000)
     assert arbiter.is_piece_resting_at(0, 2) is False
 

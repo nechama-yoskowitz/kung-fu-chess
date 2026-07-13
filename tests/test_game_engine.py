@@ -69,29 +69,28 @@ def test_game_over_does_not_create_pending_move():
 # C. Destination already claimed — is_accepted False, reason "destination_claimed"
 # ---------------------------------------------------------------------------
 
-def test_destination_claimed_rejects_move():
+def test_same_destination_moves_both_accepted():
+    """Two same-color moves to the same destination are both accepted.
+    Collision is resolved at arrival time (later one stops before)."""
     board = make_board([
-        "wR . . . .",
-        "wR . . . .",
+        "wR . . . wR",
     ])
     engine = GameEngine(board)
-    # First move claims (0, 4)
-    engine.request_move(0, 0, 0, 4)
-    # Second move tries the same destination
-    result = engine.request_move(1, 0, 0, 4)
-    assert result.is_accepted is False
-    assert result.reason == "destination_claimed"
+    result1 = engine.request_move(0, 0, 0, 2)   # wR col 0 → col 2
+    result2 = engine.request_move(0, 4, 0, 2)   # wR col 4 → col 2
+    assert result1.is_accepted is True
+    assert result2.is_accepted is True
 
 
-def test_destination_claimed_does_not_add_pending_move():
+def test_same_destination_creates_two_pending_moves():
+    """Both moves are created; resolution happens at arrival."""
     board = make_board([
-        "wR . . . .",
-        "wR . . . .",
+        "wR . . . wR",
     ])
     engine = GameEngine(board)
-    engine.request_move(0, 0, 0, 4)
-    engine.request_move(1, 0, 0, 4)
-    assert len(engine.pending_moves) == 1  # only the first
+    engine.request_move(0, 0, 0, 2)
+    engine.request_move(0, 4, 0, 2)
+    assert len(engine.pending_moves) == 2
 
 
 # ---------------------------------------------------------------------------

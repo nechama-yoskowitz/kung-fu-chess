@@ -8,8 +8,8 @@ from game.realtime.motion import (
     is_piece_resting,
 )
 from game.realtime.movement_resolver import (
-    apply_arrived_moves,
     expire_jumps,
+    resolve_window,
 )
 
 
@@ -30,6 +30,7 @@ class RealTimeArbiter:
         self.pending_moves = []
         self.active_jumps = []
         self.active_cooldowns = []
+        self._next_sequence_id = 0
 
     def start_motion(self, piece, from_row, from_col, to_row, to_col):
         """
@@ -40,13 +41,17 @@ class RealTimeArbiter:
         Returns True if the motion was started successfully.
         """
         distance = max(abs(to_row - from_row), abs(to_col - from_col))
+        seq_id = self._next_sequence_id
+        self._next_sequence_id += 1
         pending_move = PendingMove(
             piece=piece,
             from_row=from_row,
             from_col=from_col,
             to_row=to_row,
             to_col=to_col,
+            started_at=self.clock,
             arrive_at=self.clock + distance * MOVE_DURATION_MS,
+            sequence_id=seq_id,
         )
         self.pending_moves.append(pending_move)
         return True
@@ -72,28 +77,40 @@ class RealTimeArbiter:
 
         Returns True if resolving arrivals caused game over.
         """
+        previous_clock = self.clock
         self.clock += ms
-        return self.update_state(board)
+        return self._resolve(board, previous_clock, self.clock)
 
     def update_state(self, board):
         """
         Resolve state at the current clock without advancing time.
 
-        - Expire completed jumps.
-        - Expire completed cooldowns.
-        - Apply arrived moves.
-        - Start cooldowns for pieces that arrived.
+        With an empty window (prev == curr), no new events are processed.
+        Only expires jumps and cooldowns.
 
         Returns True if a king was captured (game over), otherwise False.
         """
-        self.active_jumps = expire_jumps(self.active_jumps, self.clock)
+        return self._resolve(board, self.clock, self.clock)
+
+    def _resolve(self, board, prev_clock, curr_clock):
+        """
+        Internal resolution for a time window.
+
+        Expires jumps and cooldowns, then processes movement events
+        in the window (prev_clock, curr_clock].
+        """
+        self.active_jumps = expire_jumps(self.active_jumps, curr_clock)
         self.expire_cooldowns()
 
+        if prev_clock == curr_clock:
+            return False
+
         self.pending_moves, game_over, self.active_jumps, arrived_cells = (
-            apply_arrived_moves(
+            resolve_window(
                 board,
                 self.pending_moves,
-                self.clock,
+                prev_clock,
+                curr_clock,
                 self.active_jumps,
             )
         )

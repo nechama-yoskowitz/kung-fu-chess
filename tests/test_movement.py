@@ -16,8 +16,8 @@ def make_board(rows):
     return [row.split() for row in rows]
 
 
-def make_move(piece, from_row, from_col, to_row, to_col, arrive_at):
-    return PendingMove(piece, from_row, from_col, to_row, to_col, arrive_at)
+def make_move(piece, from_row, from_col, to_row, to_col, arrive_at, started_at=0, sequence_id=0):
+    return PendingMove(piece, from_row, from_col, to_row, to_col, started_at, arrive_at, sequence_id)
 
 
 # ---------------------------------------------------------------------------
@@ -58,8 +58,8 @@ def test_move_arrives_after_time():
 def test_only_arrived_moves_are_applied():
     board = make_board(["wR . . . wB"])
     pending = [
-        make_move("wR", 0, 0, 0, 1, arrive_at=500),
-        make_move("wB", 0, 4, 0, 3, arrive_at=2000),
+        make_move("wR", 0, 0, 0, 1, arrive_at=500, sequence_id=0),
+        make_move("wB", 0, 4, 0, 3, arrive_at=2000, sequence_id=1),
     ]
     remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     # wR has arrived (arrive_at=500 < clock=1000)
@@ -78,8 +78,8 @@ def test_multiple_moves_arrive_at_same_time():
         "wB . .",
     ])
     pending = [
-        make_move("wR", 0, 0, 0, 2, arrive_at=1000),
-        make_move("wB", 1, 0, 1, 2, arrive_at=1000),
+        make_move("wR", 0, 0, 0, 2, arrive_at=1000, sequence_id=0),
+        make_move("wB", 1, 0, 1, 2, arrive_at=1000, sequence_id=1),
     ]
     remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert board[0][2] == "wR"
@@ -803,8 +803,8 @@ def test_game_over_pending_moves_cleared():
     # Second move (still pending at same clock) must be discarded.
     board = make_board(["wR bK", "wB . "])
     pending = [
-        make_move("wR", 0, 0, 0, 1, arrive_at=1000),   # captures bK → game over
-        make_move("wB", 1, 0, 1, 1, arrive_at=1000),   # should be cancelled
+        make_move("wR", 0, 0, 0, 1, arrive_at=1000, sequence_id=0),
+        make_move("wB", 1, 0, 1, 1, arrive_at=1000, sequence_id=1),
     ]
     remaining, game_over, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is True
