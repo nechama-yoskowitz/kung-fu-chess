@@ -1,34 +1,29 @@
-from game.graphics.animation import Animation
+from game.graphics.renderer import Renderer
 from game.graphics.sprite_loader import SpriteLoader
 
+
+renderer = Renderer(
+    "game/graphics/assets/board.png"
+)
 
 loader = SpriteLoader(
     "game/graphics/assets/pieces"
 )
 
-data = loader.load_animation(
+animation_data = loader.load_animation(
     piece="wQ",
     state="jump",
     size=(100, 100),
 )
 
-animation = Animation(data)
+canvas = renderer.start_frame()
 
-print("Start:", animation.current_frame_index)
+first_frame = animation_data.frames[0]
 
-animation.update(124)
-print("After 124 ms:", animation.current_frame_index)
+renderer.draw_piece(
+    piece_img=first_frame,
+    x=50,
+    y=50,
+)
 
-animation.update(1)
-print("After 125 ms:", animation.current_frame_index)
-
-animation.update(125)
-print("After 250 ms:", animation.current_frame_index)
-
-animation.update(1000)
-print("Final index:", animation.current_frame_index)
-print("Finished:", animation.is_finished())
-
-animation.reset()
-print("After reset:", animation.current_frame_index)
-print("Finished after reset:", animation.is_finished())
+canvas.show()
