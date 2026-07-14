@@ -5,11 +5,13 @@ loader = SpriteLoader(
     "game/graphics/assets/pieces"
 )
 
-frames = loader.load_state_frames(
+animation = loader.load_animation(
     piece="wQ",
     state="jump",
     size=(100, 100),
 )
 
-print("Number of frames:", len(frames))
-print("First frame type:", type(frames[0]))
+print("Number of frames:", len(animation.frames))
+print("FPS:", animation.frames_per_sec)
+print("Is loop:", animation.is_loop)
+print("First frame type:", type(animation.frames[0]))
