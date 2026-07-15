@@ -78,3 +78,48 @@ class Renderer:
         y = round(cell_y + (cell_height - piece_height) / 2)
 
         self.draw_piece(piece_img, x, y)
+
+    def draw_cell_highlight(
+    self,
+    row: int,
+    col: int,
+    rows: int,
+    cols: int,
+    color: tuple = (0, 255, 255),
+    thickness: int = 3,
+    ) -> None:
+        """
+        Draw a rectangular border around a board cell.
+
+        Parameters
+        ----------
+        row, col : int
+            Cell coordinates on the board.
+        rows, cols : int
+            Board dimensions.
+        color : tuple
+            BGR color for the border (default: yellow).
+        thickness : int
+            Border thickness in pixels.
+        """
+        if self.canvas is None:
+            raise RuntimeError(
+                "start_frame() must be called before drawing"
+            )
+
+        if not (0 <= row < rows and 0 <= col < cols):
+            raise ValueError("Cell is outside the board")
+
+        cell_width, cell_height = self.get_cell_size(rows, cols)
+
+        x = col * cell_width
+        y = row * cell_height
+
+        self.canvas.draw_rectangle(
+            x=x,
+            y=y,
+            width=cell_width,
+            height=cell_height,
+            color=color,
+            thickness=thickness,
+        )

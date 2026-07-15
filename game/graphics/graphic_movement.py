@@ -56,6 +56,11 @@ class GraphicMovement:
         self._duration_ms = duration_ms
         self._active = True
 
+    def cancel(self) -> None:
+        """Cancel the active movement without producing a final position."""
+        self._active = False
+        self._elapsed_ms = 0.0
+
     def update(self, delta_time_ms: float) -> tuple[float, float, bool]:
         """
         Advance the movement by delta_time_ms.

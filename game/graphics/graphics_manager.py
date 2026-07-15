@@ -60,6 +60,10 @@ class GraphicsManager:
                 return graphic_piece
 
         return None
+    def remove_piece(self, graphic_piece: GraphicPiece) -> None:
+        """Remove a specific GraphicPiece from the managed list."""
+        self.graphic_pieces.remove(graphic_piece)
+
     def set_piece_state(
     self,
     row: int,

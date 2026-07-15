@@ -86,6 +86,28 @@ class Img:
                     cv2.FONT_HERSHEY_SIMPLEX, font_size,
                     color, thickness, cv2.LINE_AA)
 
+    def draw_rectangle(self, x, y, width, height, color=(0, 255, 255), thickness=2):
+        """
+        Draw a rectangle border on the image.
+
+        Parameters
+        ----------
+        x, y : int
+            Top-left corner in pixels.
+        width, height : int
+            Size of the rectangle in pixels.
+        color : tuple
+            BGR color tuple (default: yellow).
+        thickness : int
+            Border thickness in pixels.
+        """
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+
+        pt1 = (x, y)
+        pt2 = (x + width - 1, y + height - 1)
+        cv2.rectangle(self.img, pt1, pt2, color, thickness)
+
     def show(self, window_name="Image", delay_ms=1):
         if self.img is None:
             raise ValueError("Image not loaded.")
@@ -95,9 +117,24 @@ class Img:
     @staticmethod
     def close_windows():
         cv2.destroyAllWindows()
+
     @staticmethod
     def is_window_open(window_name: str) -> bool:
         return cv2.getWindowProperty(
             window_name,
             cv2.WND_PROP_VISIBLE,
-        ) >= 1    
+        ) >= 1
+
+    @staticmethod
+    def set_mouse_callback(window_name: str, callback) -> None:
+        """
+        Register an OpenCV mouse callback on the named window.
+
+        Parameters
+        ----------
+        window_name : str
+            The window to attach the callback to.
+        callback : callable
+            Function with signature (event, x, y, flags, param).
+        """
+        cv2.setMouseCallback(window_name, callback)

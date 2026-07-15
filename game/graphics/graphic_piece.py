@@ -120,3 +120,22 @@ class GraphicPiece:
         self.col = int(self._movement.target_col)
 
         self.set_state(PieceStateMachine.LONG_REST)
+
+    def finish_move_at(self, row: int, col: int) -> None:
+        """
+        Authoritatively end movement and place the piece at the given cell.
+
+        Called by the synchronizer when the engine has resolved a move.
+        If the graphic movement is still active, it is cancelled.
+        The piece is snapped to the destination with correct state.
+        """
+        if self._movement.is_active:
+            self._movement.cancel()
+
+        self.row = row
+        self.col = col
+        self.display_row = float(row)
+        self.display_col = float(col)
+
+        if self.state == PieceStateMachine.MOVE:
+            self.set_state(PieceStateMachine.LONG_REST)
