@@ -1,3 +1,4 @@
+from game.graphics.game_loop import GameLoop
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.renderer import Renderer
 from game.graphics.sprite_manager import SpriteManager
@@ -40,16 +41,12 @@ graphics_manager = GraphicsManager(
 
 graphics_manager.initialize_from_board(board)
 
-print("Graphic pieces:", len(graphics_manager.graphic_pieces))
-
-graphics_manager.update(125)
-
-canvas = renderer.start_frame()
-
-graphics_manager.draw(
+game_loop = GameLoop(
     renderer=renderer,
+    graphics_manager=graphics_manager,
     rows=rows,
     cols=cols,
+    target_fps=60,
 )
 
-canvas.show()
+game_loop.run()

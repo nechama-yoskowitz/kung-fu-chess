@@ -86,9 +86,12 @@ class Img:
                     cv2.FONT_HERSHEY_SIMPLEX, font_size,
                     color, thickness, cv2.LINE_AA)
 
-    def show(self):
+    def show(self, window_name="Image", delay_ms=1):
         if self.img is None:
             raise ValueError("Image not loaded.")
-        cv2.imshow("Image", self.img)
-        cv2.waitKey(0)
+
+        cv2.imshow(window_name, self.img)
+        return cv2.waitKey(delay_ms)
+    @staticmethod
+    def close_windows():
         cv2.destroyAllWindows()
