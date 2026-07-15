@@ -43,13 +43,29 @@ class Renderer:
     rows: int,
     cols: int,
     ) -> None:
+        if not (0 <= row < rows and 0 <= col < cols):
+            raise ValueError("Cell is outside the board")
+
+        self.draw_piece_at_position(
+            piece_img=piece_img,
+            row=float(row),
+            col=float(col),
+            rows=rows,
+            cols=cols,
+        )    
+
+    def draw_piece_at_position(
+    self,
+    piece_img: Img,
+    row: float,
+    col: float,
+    rows: int,
+    cols: int,
+    ) -> None:
         if self.canvas is None:
             raise RuntimeError(
                 "start_frame() must be called before drawing"
             )
-
-        if not (0 <= row < rows and 0 <= col < cols):
-            raise ValueError("Cell is outside the board")
 
         cell_width, cell_height = self.get_cell_size(rows, cols)
 
@@ -58,7 +74,7 @@ class Renderer:
         cell_x = col * cell_width
         cell_y = row * cell_height
 
-        x = cell_x + (cell_width - piece_width) // 2
-        y = cell_y + (cell_height - piece_height) // 2
+        x = round(cell_x + (cell_width - piece_width) / 2)
+        y = round(cell_y + (cell_height - piece_height) / 2)
 
-        piece_img.draw_on(self.canvas, x, y)       
+        self.draw_piece(piece_img, x, y)

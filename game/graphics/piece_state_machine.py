@@ -8,7 +8,7 @@ class PieceStateMachine:
     ALLOWED_TRANSITIONS = {
         IDLE: {MOVE, JUMP, SHORT_REST, LONG_REST},
 
-        MOVE: {SHORT_REST, IDLE},
+        MOVE: { SHORT_REST,LONG_REST, IDLE},
 
         JUMP: {IDLE, SHORT_REST},
 

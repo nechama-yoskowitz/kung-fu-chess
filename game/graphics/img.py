@@ -95,3 +95,9 @@ class Img:
     @staticmethod
     def close_windows():
         cv2.destroyAllWindows()
+    @staticmethod
+    def is_window_open(window_name: str) -> bool:
+        return cv2.getWindowProperty(
+            window_name,
+            cv2.WND_PROP_VISIBLE,
+        ) >= 1    

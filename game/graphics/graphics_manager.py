@@ -44,10 +44,69 @@ class GraphicsManager:
         cols: int,
     ) -> None:
         for graphic_piece in self.graphic_pieces:
-            renderer.draw_piece_in_cell(
+            renderer.draw_piece_at_position(
                 piece_img=graphic_piece.get_current_frame(),
-                row=graphic_piece.row,
-                col=graphic_piece.col,
+                row=graphic_piece.display_row,
+                col=graphic_piece.display_col,
                 rows=rows,
                 cols=cols,
             )
+    def get_piece_at(self, row: int, col: int) -> GraphicPiece | None:
+        for graphic_piece in self.graphic_pieces:
+            if (
+                graphic_piece.row == row
+                and graphic_piece.col == col
+            ):
+                return graphic_piece
+
+        return None
+    def set_piece_state(
+    self,
+    row: int,
+    col: int,
+    state: str,
+    ) -> None:
+        graphic_piece = self.get_piece_at(row, col)
+
+        if graphic_piece is None:
+            raise ValueError(
+                f"No graphic piece found at ({row}, {col})"
+            )
+
+        graphic_piece.set_state(state)
+
+    def move_piece(
+    self,
+    from_row: int,
+    from_col: int,
+    to_row: int,
+    to_col: int,
+    ) -> None:
+        graphic_piece = self.get_piece_at(from_row, from_col)
+
+        if graphic_piece is None:
+            raise ValueError(
+                f"No graphic piece found at ({from_row}, {from_col})"
+            )
+
+        graphic_piece.set_position(to_row, to_col)                
+    def start_piece_move(
+    self,
+    from_row: int,
+    from_col: int,
+    to_row: int,
+    to_col: int,
+    duration_ms: float,
+    ) -> None:
+        graphic_piece = self.get_piece_at(from_row, from_col)
+
+        if graphic_piece is None:
+            raise ValueError(
+                f"No graphic piece found at ({from_row}, {from_col})"
+            )
+
+        graphic_piece.start_move(
+            to_row=to_row,
+            to_col=to_col,
+            duration_ms=duration_ms,
+        )

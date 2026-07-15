@@ -54,6 +54,10 @@ class GameLoop:
                     delay_ms=delay_ms,
                 )
 
+                if not Img.is_window_open(self.window_name):
+                    self.running = False
+                    continue
+
                 if key == Esc:  
                     self.running = False
 
