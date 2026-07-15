@@ -33,7 +33,7 @@ def test_start_cooldown_adds_cooldown_with_correct_available_at():
     cd = arbiter.active_cooldowns[0]
     assert cd.row == 0
     assert cd.col == 2
-    assert cd.available_at == 3000  # 2000 + COOLDOWN_DURATION_MS
+    assert cd.available_at == 4000  # 2000 + COOLDOWN_DURATION_MS
 
 
 def test_piece_is_resting_before_available_at():
@@ -48,7 +48,7 @@ def test_piece_is_available_at_exact_available_at():
     arbiter = RealTimeArbiter()
     arbiter.clock = 2000
     arbiter.start_cooldown("wR", 0, 2)
-    arbiter.clock = 3000
+    arbiter.clock = 4000
     assert arbiter.is_piece_resting_at(0, 2) is False
 
 
@@ -75,10 +75,10 @@ def test_multiple_cooldowns_coexist():
 def test_expiring_one_cooldown_does_not_affect_another():
     arbiter = RealTimeArbiter()
     arbiter.clock = 0
-    arbiter.start_cooldown("wR", 0, 0)  # available_at=1000
+    arbiter.start_cooldown("wR", 0, 0)  # available_at=2000
     arbiter.clock = 500
-    arbiter.start_cooldown("wB", 1, 1)  # available_at=1500
-    arbiter.clock = 1000
+    arbiter.start_cooldown("wB", 1, 1)  # available_at=2500
+    arbiter.clock = 2000
     arbiter.expire_cooldowns()
     assert arbiter.is_piece_resting_at(0, 0) is False
     assert arbiter.is_piece_resting_at(1, 1) is True

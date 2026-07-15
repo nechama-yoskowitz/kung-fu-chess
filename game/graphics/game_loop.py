@@ -20,6 +20,7 @@ class GameLoop:
         pending_moves_provider=None,
         board_provider=None,
         engine_updater=None,
+        cooldown_provider=None,
         mouse_input_adapter: MouseInputAdapter | None = None,
         selection_provider=None,
         target_fps: int = 60,
@@ -36,6 +37,7 @@ class GameLoop:
         self.pending_moves_provider = pending_moves_provider
         self.board_provider = board_provider
         self.engine_updater = engine_updater
+        self.cooldown_provider = cooldown_provider
         self.mouse_input_adapter = mouse_input_adapter
         self.selection_provider = selection_provider
         self.target_fps = target_fps
@@ -82,6 +84,18 @@ class GameLoop:
                 self.graphics_manager.update(delta_time_ms)
 
                 canvas = self.renderer.start_frame()
+
+                # Draw cooldown overlays before pieces so pieces remain visible.
+                if self.cooldown_provider:
+                    indicators = self.cooldown_provider()
+                    for cd_row, cd_col, progress in indicators:
+                        self.renderer.draw_cooldown_indicator(
+                            row=cd_row,
+                            col=cd_col,
+                            progress=progress,
+                            rows=self.rows,
+                            cols=self.cols,
+                        )
 
                 self.graphics_manager.draw(
                     renderer=self.renderer,

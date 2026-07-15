@@ -42,4 +42,4 @@ MOVE_DURATION_MS = 1000
 JUMP_DURATION_MS = 1000
 
 # How long (in ms) a piece rests after arriving at its destination.
-COOLDOWN_DURATION_MS = 1000
+COOLDOWN_DURATION_MS = 2000

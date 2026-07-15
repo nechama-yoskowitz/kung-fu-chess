@@ -108,6 +108,72 @@ class Img:
         pt2 = (x + width - 1, y + height - 1)
         cv2.rectangle(self.img, pt1, pt2, color, thickness)
 
+    def fill_rectangle(self, x, y, width, height, color=(0, 255, 255)):
+        """
+        Draw a filled rectangle on the image.
+
+        Parameters
+        ----------
+        x, y : int
+            Top-left corner in pixels.
+        width, height : int
+            Size of the rectangle in pixels.
+        color : tuple
+            BGR color tuple (default: yellow).
+        """
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+
+        if width <= 0 or height <= 0:
+            return
+
+        pt1 = (x, y)
+        pt2 = (x + width - 1, y + height - 1)
+        cv2.rectangle(self.img, pt1, pt2, color, thickness=-1)
+
+    def blend_rectangle(self, x, y, width, height, color=(0, 255, 255), alpha=0.4):
+        """
+        Draw a semi-transparent filled rectangle on the image.
+
+        Parameters
+        ----------
+        x, y : int
+            Top-left corner in pixels.
+        width, height : int
+            Size of the rectangle in pixels.
+        color : tuple
+            BGR color tuple (default: yellow).
+        alpha : float
+            Opacity of the overlay (0.0 = invisible, 1.0 = opaque).
+        """
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+
+        if width <= 0 or height <= 0:
+            return
+
+        h, w = self.img.shape[:2]
+        # Clamp to image bounds
+        x1 = max(x, 0)
+        y1 = max(y, 0)
+        x2 = min(x + width, w)
+        y2 = min(y + height, h)
+
+        if x2 <= x1 or y2 <= y1:
+            return
+
+        roi = self.img[y1:y2, x1:x2]
+        channels = roi.shape[2] if roi.ndim == 3 else 1
+
+        # Build fill color matching the ROI channel count.
+        if channels == 4:
+            fill_color = (color[0], color[1], color[2], 255)
+        else:
+            fill_color = color[:3] if len(color) >= 3 else color
+
+        overlay = np.full_like(roi, fill_color)
+        cv2.addWeighted(overlay, alpha, roi, 1.0 - alpha, 0, roi)
+
     def show(self, window_name="Image", delay_ms=1):
         if self.img is None:
             raise ValueError("Image not loaded.")

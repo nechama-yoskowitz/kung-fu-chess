@@ -172,3 +172,38 @@ class GraphicsSynchronizer:
                     return (r, c)
 
         return None
+
+    @staticmethod
+    def get_cooldown_indicators(active_cooldowns, clock, cooldown_duration_ms):
+        """
+        Compute cooldown indicator data from the engine's active cooldowns.
+
+        Parameters
+        ----------
+        active_cooldowns : list[ActiveCooldown]
+            The engine's current list of active cooldowns.
+        clock : float | int
+            The engine's current clock value.
+        cooldown_duration_ms : float | int
+            The total cooldown duration (COOLDOWN_DURATION_MS).
+
+        Returns
+        -------
+        list[tuple[int, int, float]]
+            A list of (row, col, progress) tuples where progress is
+            the remaining cooldown fraction (1.0 = just started, 0.0 = expired).
+        """
+        indicators = []
+
+        for cd in active_cooldowns:
+            remaining = cd.available_at - clock
+
+            if remaining <= 0:
+                continue
+
+            progress = remaining / cooldown_duration_ms
+            progress = min(progress, 1.0)
+
+            indicators.append((cd.row, cd.col, progress))
+
+        return indicators

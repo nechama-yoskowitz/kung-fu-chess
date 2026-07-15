@@ -7,6 +7,7 @@ from game.graphics.mouse_input_adapter import MouseInputAdapter
 from game.graphics.renderer import Renderer
 from game.graphics.sprite_manager import SpriteManager
 from game.model.board_mapper import BoardMapper
+from game.model.constants import COOLDOWN_DURATION_MS
 
 
 # --- Game engine setup ---
@@ -77,6 +78,9 @@ game_loop = GameLoop(
     pending_moves_provider=lambda: engine.pending_moves,
     board_provider=lambda: engine.board,
     engine_updater=lambda dt: engine.handle_wait(dt),
+    cooldown_provider=lambda: GraphicsSynchronizer.get_cooldown_indicators(
+        engine.arbiter.active_cooldowns, engine.clock, COOLDOWN_DURATION_MS
+    ),
     mouse_input_adapter=mouse_input_adapter,
     selection_provider=lambda: controller.selected,
     target_fps=60,
