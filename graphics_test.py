@@ -1,52 +1,34 @@
-from game.graphics.game_loop import GameLoop
-from game.graphics.graphics_manager import GraphicsManager
-from game.graphics.renderer import Renderer
+from game.graphics.graphic_piece import GraphicPiece
+from game.graphics.piece_state_machine import PieceStateMachine
 from game.graphics.sprite_manager import SpriteManager
 
-
-board = [
-    ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
-    ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
-    ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
-]
-
-
-renderer = Renderer(
-    "game/graphics/assets/board.png"
-)
 
 sprite_manager = SpriteManager(
     "game/graphics/assets/pieces"
 )
 
-rows = len(board)
-cols = len(board[0])
-
-cell_width, cell_height = renderer.get_cell_size(rows, cols)
-
-piece_size = (
-    int(cell_width * 0.85),
-    int(cell_height * 0.85),
-)
-
-graphics_manager = GraphicsManager(
+piece = GraphicPiece(
+    piece="wQ",
+    row=7,
+    col=3,
     sprite_manager=sprite_manager,
-    piece_size=piece_size,
+    piece_size=(90, 90),
 )
 
-graphics_manager.initialize_from_board(board)
+print("Initial state:", piece.state)
 
-game_loop = GameLoop(
-    renderer=renderer,
-    graphics_manager=graphics_manager,
-    rows=rows,
-    cols=cols,
-    target_fps=60,
-)
+piece.set_state(PieceStateMachine.JUMP)
+print("After jump request:", piece.state)
 
-game_loop.run()
+for _ in range(20):
+    piece.update(125)
+
+print("After jump animation:", piece.state)
+
+piece.set_state(PieceStateMachine.MOVE)
+print("After move request:", piece.state)
+
+for _ in range(20):
+    piece.update(125)
+
+print("After move animation:", piece.state)
