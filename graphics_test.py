@@ -1,61 +1,29 @@
-from game.graphics.renderer import Renderer
+from game.graphics.graphic_piece import GraphicPiece
 from game.graphics.sprite_manager import SpriteManager
 
-
-board = [
-    ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
-    ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
-    ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
-]
-
-
-renderer = Renderer(
-    "game/graphics/assets/board.png"
-)
 
 sprite_manager = SpriteManager(
     "game/graphics/assets/pieces"
 )
 
-rows = len(board)
-cols = len(board[0])
-
-cell_width, cell_height = renderer.get_cell_size(rows, cols)
-
-# מעט קטן יותר מהתא, כדי שהכלי לא ייגע בגבולות.
-piece_size = (
-    int(cell_width * 0.85),
-    int(cell_height * 0.85),
+graphic_piece = GraphicPiece(
+    piece="wQ",
+    row=7,
+    col=3,
+    sprite_manager=sprite_manager,
+    piece_size=(90, 90),
 )
 
-canvas = renderer.start_frame()
+print("Piece:", graphic_piece.piece)
+print("Position:", graphic_piece.row, graphic_piece.col)
+print("State:", graphic_piece.state)
+print("Frame type:", type(graphic_piece.get_current_frame()))
 
-for row in range(rows):
-    for col in range(cols):
-        piece = board[row][col]
+graphic_piece.update(125)
+print("Updated frame type:", type(graphic_piece.get_current_frame()))
 
-        if piece == ".":
-            continue
+graphic_piece.set_state("jump")
+print("New state:", graphic_piece.state)
 
-        animation_data = sprite_manager.get_animation_data(
-            piece=piece,
-            state="idle",
-            size=piece_size,
-        )
-
-        first_frame = animation_data.frames[0]
-
-        renderer.draw_piece_in_cell(
-            piece_img=first_frame,
-            row=row,
-            col=col,
-            rows=rows,
-            cols=cols,
-        )
-
-canvas.show()
+graphic_piece.set_position(6, 3)
+print("New position:", graphic_piece.row, graphic_piece.col)
