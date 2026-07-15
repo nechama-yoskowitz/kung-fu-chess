@@ -1,36 +1,36 @@
+from game.engine.game_engine import GameEngine
 from game.graphics.game_loop import GameLoop
 from game.graphics.graphics_manager import GraphicsManager
+from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.graphics.renderer import Renderer
 from game.graphics.sprite_manager import SpriteManager
 
 
+# --- Game engine setup ---
+
 board = [
+    ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
+    ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
     [".", ".", ".", ".", ".", ".", ".", "."],
     [".", ".", ".", ".", ".", ".", ".", "."],
     [".", ".", ".", ".", ".", ".", ".", "."],
     [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", "wQ", ".", ".", ".", "."],
+    ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
+    ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
 ]
 
+engine = GameEngine(board)
 
-renderer = Renderer(
-    "game/graphics/assets/board.png"
-)
+# --- Graphics setup ---
 
-sprite_manager = SpriteManager(
-    "game/graphics/assets/pieces"
-)
+renderer = Renderer("game/graphics/assets/board.png")
 
-rows = len(board)
-cols = len(board[0])
+sprite_manager = SpriteManager("game/graphics/assets/pieces")
 
-cell_width, cell_height = renderer.get_cell_size(
-    rows,
-    cols,
-)
+rows = len(engine.board)
+cols = len(engine.board[0])
+
+cell_width, cell_height = renderer.get_cell_size(rows, cols)
 
 piece_size = (
     int(cell_width * 0.70),
@@ -42,16 +42,12 @@ graphics_manager = GraphicsManager(
     piece_size=piece_size,
 )
 
-graphics_manager.initialize_from_board(board)
+# --- Synchronize graphics from engine state ---
 
-# תנועה ישרה למעלה:
-graphics_manager.start_piece_move(
-    from_row=7,
-    from_col=3,
-    to_row=4,
-    to_col=3,
-    duration_ms=3000,
-)
+synchronizer = GraphicsSynchronizer(graphics_manager)
+synchronizer.initialize(engine.board)
+
+# --- Run the game loop ---
 
 game_loop = GameLoop(
     renderer=renderer,
