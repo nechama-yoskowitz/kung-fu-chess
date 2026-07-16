@@ -3,21 +3,36 @@ from pathlib import Path
 
 from game.graphics.animation_data import AnimationData
 from game.graphics.img import Img
-from game.graphics.sprite_mapper import piece_to_sprite_folder
+
 
 class SpriteLoader:
+    """
+    Loads sprite animations from disk.
+
+    Asset path convention:
+        pieces_root / piece_token / states / state_name / sprites / *.png
+        pieces_root / piece_token / states / state_name / config.json
+
+    Piece folder names match engine tokens directly (e.g. "wR", "bQ").
+    """
+
     def __init__(self, pieces_root):
         self.pieces_root = Path(pieces_root)
 
     def load_animation(self, piece, state, size):
-        folder_name = piece_to_sprite_folder(piece)
+        piece_folder = self.pieces_root / piece
 
-        state_folder = (
-            self.pieces_root
-            / folder_name
-            / "states"
-            / state
-        )
+        if not piece_folder.exists():
+            raise FileNotFoundError(
+                f"Piece folder not found: {piece_folder}"
+            )
+
+        state_folder = piece_folder / "states" / state
+
+        if not state_folder.exists():
+            raise FileNotFoundError(
+                f"State folder not found: {state_folder}"
+            )
 
         sprites_folder = state_folder / "sprites"
         config_path = state_folder / "config.json"
