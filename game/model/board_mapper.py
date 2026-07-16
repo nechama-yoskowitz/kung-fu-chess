@@ -9,6 +9,6 @@ class BoardMapper:
         self.cell_height = cell_height
 
     def pixel_to_cell(self, x, y):
-        row = y // self.cell_height
-        col = x // self.cell_width
+        row = int(y // self.cell_height)
+        col = int(x // self.cell_width)
         return row, col

@@ -24,16 +24,42 @@ class Renderer:
     self,
     rows: int,
     cols: int,
-    ) -> tuple[int, int]:
+    ) -> tuple[float, float]:
         if rows <= 0 or cols <= 0:
             raise ValueError("Board dimensions must be positive")
 
         board_height, board_width = self.board_template.img.shape[:2]
 
-        cell_width = board_width // cols
-        cell_height = board_height // rows
+        cell_width = board_width / cols
+        cell_height = board_height / rows
 
-        return cell_width, cell_height    
+        return cell_width, cell_height
+
+    def get_cell_bounds(
+    self,
+    row: int,
+    col: int,
+    rows: int,
+    cols: int,
+    ) -> tuple[int, int, int, int]:
+        """
+        Compute exact pixel boundaries for a board cell.
+
+        Returns (left, top, right, bottom) where:
+        - left/top are inclusive pixel coordinates,
+        - right/bottom are exclusive (first pixel of the next cell).
+
+        Adjacent cells share the same boundary with no gaps or overlaps.
+        The full board width/height is exactly covered.
+        """
+        board_height, board_width = self.board_template.img.shape[:2]
+
+        left = round(col * board_width / cols)
+        right = round((col + 1) * board_width / cols)
+        top = round(row * board_height / rows)
+        bottom = round((row + 1) * board_height / rows)
+
+        return left, top, right, bottom
 
     def draw_piece_in_cell(
     self,
@@ -116,19 +142,18 @@ class Renderer:
 
         progress = min(progress, 1.0)
 
-        cell_width, cell_height = self.get_cell_size(rows, cols)
+        left, top, right, bottom = self.get_cell_bounds(row, col, rows, cols)
+        cell_width = right - left
+        cell_height = bottom - top
 
         overlay_height = round(cell_height * progress)
 
         if overlay_height <= 0:
             return
 
-        cell_x = col * cell_width
-        cell_y = row * cell_height
-
         self.canvas.blend_rectangle(
-            x=cell_x,
-            y=cell_y,
+            x=left,
+            y=top,
             width=cell_width,
             height=overlay_height,
             color=color,
@@ -166,16 +191,13 @@ class Renderer:
         if not (0 <= row < rows and 0 <= col < cols):
             raise ValueError("Cell is outside the board")
 
-        cell_width, cell_height = self.get_cell_size(rows, cols)
-
-        x = col * cell_width
-        y = row * cell_height
+        left, top, right, bottom = self.get_cell_bounds(row, col, rows, cols)
 
         self.canvas.draw_rectangle(
-            x=x,
-            y=y,
-            width=cell_width,
-            height=cell_height,
+            x=left,
+            y=top,
+            width=right - left,
+            height=bottom - top,
             color=color,
             thickness=thickness,
         )
