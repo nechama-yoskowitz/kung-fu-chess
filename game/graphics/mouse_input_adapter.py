@@ -8,18 +8,20 @@ class MouseInputAdapter:
     Receives mouse events from the OpenCV window and delegates
     click actions to the Controller.
 
-    Responsibilities:
-    - Listen for left-button mouse clicks (move selection).
-    - Listen for right-button mouse clicks (jump requests).
-    - Forward raw pixel coordinates to controller.click/jump(x, y).
-    - Ignore gameplay clicks when game_over_provider returns True.
-    - The Controller's BoardMapper handles pixel-to-cell conversion.
-    - Does NOT contain chess rules or selection logic.
+    Handles board offset translation: converts window-level pixel
+    coordinates into board-local coordinates before forwarding
+    to the Controller. Scales coordinates to the original board
+    image size so the Controller's BoardMapper works correctly.
     """
 
-    def __init__(self, controller, game_over_provider=None):
+    def __init__(self, controller, game_over_provider=None,
+                 board_rect_provider=None, original_board_size_provider=None):
         self.controller = controller
         self.game_over_provider = game_over_provider
+        # board_rect_provider returns (left, top, width, height) of the displayed board
+        self.board_rect_provider = board_rect_provider
+        # original_board_size_provider returns (width, height) of the original board image
+        self.original_board_size_provider = original_board_size_provider
 
     def register(self, window_name: str) -> None:
         """Register the mouse callback on the given OpenCV window."""
@@ -30,7 +32,43 @@ class MouseInputAdapter:
         if self.game_over_provider and self.game_over_provider():
             return
 
+        if event not in (cv2.EVENT_LBUTTONDOWN, cv2.EVENT_RBUTTONDOWN):
+            return
+
+        # Translate window coords to board-local coords
+        local_x, local_y = self._to_board_local(x, y)
+        if local_x is None:
+            return  # Click was outside the board
+
         if event == cv2.EVENT_LBUTTONDOWN:
-            self.controller.click(x, y)
+            self.controller.click(local_x, local_y)
         elif event == cv2.EVENT_RBUTTONDOWN:
-            self.controller.jump(x, y)
+            self.controller.jump(local_x, local_y)
+
+    def _to_board_local(self, x: int, y: int):
+        """
+        Convert window coordinates to original-board-image coordinates.
+
+        Returns (scaled_x, scaled_y) or (None, None) if outside the board.
+        """
+        if not self.board_rect_provider:
+            return x, y
+
+        board_left, board_top, board_width, board_height = self.board_rect_provider()
+
+        local_x = x - board_left
+        local_y = y - board_top
+
+        if local_x < 0 or local_y < 0:
+            return None, None
+        if local_x >= board_width or local_y >= board_height:
+            return None, None
+
+        # Scale to original board image size if available
+        if self.original_board_size_provider:
+            orig_w, orig_h = self.original_board_size_provider()
+            if board_width > 0 and board_height > 0:
+                local_x = int(local_x * orig_w / board_width)
+                local_y = int(local_y * orig_h / board_height)
+
+        return local_x, local_y

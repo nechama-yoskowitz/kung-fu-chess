@@ -127,6 +127,7 @@ class RealTimeArbiter:
                     final_row=rm["final_row"],
                     final_col=rm["final_col"],
                     promoted_to=rm["promoted_to"],
+                    captured_piece=rm["captured_piece"],
                 ))
 
         if game_over:

@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 from game.events import EventBus
+from game.events.engine_events import MoveResolved
+from game.model.constants import PIECE_VALUES
+from game.model.pieces import get_color, get_type
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
 
@@ -22,7 +25,8 @@ class GameEngine:
     - game-over state,
     - move validation through RuleEngine,
     - delegating real-time operations to RealTimeArbiter,
-    - hosting the event bus for decoupled communication.
+    - hosting the event bus for decoupled communication,
+    - tracking material score.
     """
 
     def __init__(self, board, event_bus=None):
@@ -31,6 +35,10 @@ class GameEngine:
         self.event_bus = event_bus or EventBus()
         self.rule_engine = RuleEngine()
         self.arbiter = RealTimeArbiter(event_bus=self.event_bus)
+        self._white_score = 0
+        self._black_score = 0
+
+        self.event_bus.subscribe(MoveResolved, self._on_move_resolved)
 
     # Read-only properties delegating to the arbiter.
 
@@ -161,3 +169,31 @@ class GameEngine:
 
         if game_over:
             self.game_over = True
+
+    @property
+    def white_score(self):
+        """Total material captured by white."""
+        return self._white_score
+
+    @property
+    def black_score(self):
+        """Total material captured by black."""
+        return self._black_score
+
+    def _on_move_resolved(self, event: MoveResolved) -> None:
+        """Update score when a capture is resolved."""
+        if not event.captured_piece:
+            return
+
+        captured_type = get_type(event.captured_piece)
+        captured_color = get_color(event.captured_piece)
+        value = PIECE_VALUES.get(captured_type, 0)
+
+        if value == 0:
+            return
+
+        # The capturer's color is the opposite of the captured piece's color.
+        if captured_color == "b":
+            self._white_score += value
+        else:
+            self._black_score += value

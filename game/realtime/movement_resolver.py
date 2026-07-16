@@ -160,6 +160,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     captured_static_cells = []  # cells where static pieces were captured
     game_over = False
     game_over_time = None
+    move_captured_piece = {}  # seq_id → captured piece token
 
     # Process events chronologically
     for event in relevant_events:
@@ -231,6 +232,8 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 game_over = True
                 game_over_time = event.event_time
 
+            move_captured_piece[seq_id] = captured_piece
+
             occupancy[target] = {"piece": event.piece, "seq_id": seq_id, "airborne": False}
             move_prev_cell[seq_id] = target
             if event.is_final:
@@ -277,6 +280,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                     "final_row": fr,
                     "final_col": fc,
                     "promoted_to": promoted_to,
+                    "captured_piece": move_captured_piece.get(move.sequence_id),
                 })
             else:
                 resolved_moves.append({
@@ -286,6 +290,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                     "final_row": None,
                     "final_col": None,
                     "promoted_to": None,
+                    "captured_piece": move_captured_piece.get(move.sequence_id),
                 })
         elif status == "captured":
             resolved_moves.append({
@@ -295,6 +300,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 "final_row": None,
                 "final_col": None,
                 "promoted_to": None,
+                "captured_piece": None,
             })
 
     # Build remaining pending_moves (only ACTIVE ones)

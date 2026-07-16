@@ -27,6 +27,9 @@ class MoveResolved:
         Column where the piece ended up (None if captured).
     promoted_to : str | None
         New piece token if promotion occurred (e.g. "wQ"), else None.
+    captured_piece : str | None
+        Token of the piece that was captured by this move (e.g. "bR"),
+        or None if no capture occurred.
     """
 
     sequence_id: int
@@ -35,3 +38,4 @@ class MoveResolved:
     final_row: int | None
     final_col: int | None
     promoted_to: str | None
+    captured_piece: str | None = None

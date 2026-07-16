@@ -2,13 +2,15 @@
 Kung-Fu Chess — interactive graphical launcher.
 
 This is the application entry point. It wires together the engine,
-controller, graphics, and input layers, then runs the game loop.
+controller, graphics, input, and UI layers, then runs the game loop.
 """
 
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
+from game.events import MoveResolved
 from game.graphics.frame_composer import FrameComposer
 from game.graphics.game_loop import GameLoop
+from game.graphics.game_screen_composer import GameScreenComposer
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.graphics.mouse_input_adapter import MouseInputAdapter
@@ -16,6 +18,7 @@ from game.graphics.renderer import Renderer
 from game.graphics.sprite_manager import SpriteManager
 from game.model.board_mapper import BoardMapper
 from game.model.constants import COOLDOWN_DURATION_MS
+from game.model.move_history import MoveHistory
 
 
 STARTING_BOARD = [
@@ -32,6 +35,8 @@ STARTING_BOARD = [
 BOARD_IMAGE_PATH = "game/graphics/assets/board.png"
 PIECES_ROOT_PATH = "game/graphics/assets/pieces"
 PIECE_SCALE = 0.70
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 800
 
 
 class GameApplication:
@@ -48,6 +53,7 @@ class GameApplication:
 
         self.renderer = Renderer(BOARD_IMAGE_PATH)
         self.sprite_manager = SpriteManager(PIECES_ROOT_PATH)
+        self.move_history = MoveHistory()
 
         self.rows = len(self.engine.board)
         self.cols = len(self.engine.board[0])
@@ -72,19 +78,19 @@ class GameApplication:
         )
         self.synchronizer.initialize(self.engine.board)
 
-        board_mapper = BoardMapper(
-            cell_width=cell_width,
-            cell_height=cell_height,
-        )
+        # BoardMapper uses the DISPLAYED board size for cell calculations.
+        # The actual displayed size depends on the screen composer's layout.
+        # We use the original board image cell size for the mapper, and the
+        # mouse adapter will scale coordinates based on displayed board size.
+        self._board_mapper_cell_width = cell_width
+        self._board_mapper_cell_height = cell_height
 
         self.controller = Controller(
             engine=self.engine,
-            board_mapper=board_mapper,
-        )
-
-        self.mouse_input_adapter = MouseInputAdapter(
-            self.controller,
-            game_over_provider=lambda: self.engine.game_over,
+            board_mapper=BoardMapper(
+                cell_width=cell_width,
+                cell_height=cell_height,
+            ),
         )
 
         self.frame_composer = FrameComposer(
@@ -101,6 +107,54 @@ class GameApplication:
             game_over_provider=lambda: self.engine.game_over,
         )
 
+        self.screen_composer = GameScreenComposer(
+            frame_composer=self.frame_composer,
+            window_width=WINDOW_WIDTH,
+            window_height=WINDOW_HEIGHT,
+            white_score_provider=lambda: self.engine.white_score,
+            black_score_provider=lambda: self.engine.black_score,
+            white_moves_provider=lambda: self.move_history.white_moves,
+            black_moves_provider=lambda: self.move_history.black_moves,
+        )
+
+        self.mouse_input_adapter = MouseInputAdapter(
+            self.controller,
+            game_over_provider=lambda: self.engine.game_over,
+            board_rect_provider=self._get_board_rect,
+            original_board_size_provider=self._get_original_board_size,
+        )
+
+        # Record moves in history when accepted
+        self._original_request_move = self.engine.request_move
+        self.engine.request_move = self._intercepted_request_move
+
+    def _get_board_rect(self):
+        """Return (left, top, width, height) of the displayed board."""
+        m = self.screen_composer.metrics
+        return (m.board_left, m.board_top, m.board_size, m.board_size)
+
+    def _get_original_board_size(self):
+        """Return (width, height) of the original board image."""
+        h, w = self.renderer.board_template.img.shape[:2]
+        return (w, h)
+
+    def _intercepted_request_move(self, from_row, from_col, to_row, to_col):
+        """Record move in history if accepted."""
+        result = self._original_request_move(from_row, from_col, to_row, to_col)
+        if result.is_accepted:
+            piece = self.engine.board[from_row][from_col]
+            color = piece[0] if piece != "." else "w"
+            self.move_history.record_move(
+                color=color,
+                clock_ms=self.engine.clock,
+                piece=piece,
+                from_row=from_row,
+                from_col=from_col,
+                to_row=to_row,
+                to_col=to_col,
+            )
+        return result
+
     def run(self):
         game_loop = GameLoop(
             frame_composer=self.frame_composer,
@@ -111,6 +165,7 @@ class GameApplication:
             active_jumps_provider=lambda: self.engine.active_jumps,
             engine_updater=lambda dt: self.engine.handle_wait(dt),
             mouse_input_adapter=self.mouse_input_adapter,
+            screen_composer=self.screen_composer,
             target_fps=60,
         )
         game_loop.run()

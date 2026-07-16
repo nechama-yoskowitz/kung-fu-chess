@@ -4,7 +4,10 @@ Main game loop — frame timing, update orchestration, and window lifecycle.
 
 import time
 
+import cv2
+
 from game.graphics.frame_composer import FrameComposer
+from game.graphics.game_screen_composer import GameScreenComposer
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.graphics.img import Img
@@ -17,8 +20,9 @@ class GameLoop:
     """
     Owns the frame loop: timing, sync calls, rendering, and window events.
 
-    Rendering is delegated to FrameComposer.
-    Sync orchestration calls the synchronizer's per-frame methods.
+    Supports two rendering modes:
+    - With GameScreenComposer: full responsive layout with panels.
+    - With FrameComposer only: board-only rendering (legacy/test mode).
     """
 
     def __init__(
@@ -31,6 +35,7 @@ class GameLoop:
         active_jumps_provider=None,
         engine_updater=None,
         mouse_input_adapter: MouseInputAdapter | None = None,
+        screen_composer: GameScreenComposer | None = None,
         target_fps: int = 60,
         window_name: str = "Kung-Fu Chess",
     ):
@@ -45,6 +50,7 @@ class GameLoop:
         self.active_jumps_provider = active_jumps_provider
         self.engine_updater = engine_updater
         self.mouse_input_adapter = mouse_input_adapter
+        self.screen_composer = screen_composer
         self.target_fps = target_fps
         self.window_name = window_name
         self.running = False
@@ -53,8 +59,15 @@ class GameLoop:
         self.running = True
         previous_time = time.perf_counter()
 
-        # Initial frame creates the window before mouse callback registration.
-        canvas = self.frame_composer.compose()
+        # Create a resizable window if using screen composer.
+        if self.screen_composer:
+            cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.window_name,
+                             self.screen_composer.window_width,
+                             self.screen_composer.window_height)
+
+        # Initial frame to create/show the window.
+        canvas = self._render_frame()
         canvas.show(window_name=self.window_name, delay_ms=1)
 
         if self.mouse_input_adapter:
@@ -68,7 +81,11 @@ class GameLoop:
 
                 self._update(delta_time_ms)
 
-                canvas = self.frame_composer.compose()
+                # Check for window resize if using screen composer.
+                if self.screen_composer:
+                    self._handle_resize()
+
+                canvas = self._render_frame()
 
                 delay_ms = max(1, int(1000 / self.target_fps))
                 key = canvas.show(window_name=self.window_name, delay_ms=delay_ms)
@@ -80,6 +97,23 @@ class GameLoop:
 
         finally:
             Img.close_windows()
+
+    def _render_frame(self) -> Img:
+        """Compose either full-screen or board-only frame."""
+        if self.screen_composer:
+            return self.screen_composer.compose()
+        return self.frame_composer.compose()
+
+    def _handle_resize(self) -> None:
+        """Detect window resize and update the screen composer layout."""
+        try:
+            rect = cv2.getWindowImageRect(self.window_name)
+            if rect is not None:
+                _, _, w, h = rect
+                if w > 0 and h > 0:
+                    self.screen_composer.update_window_size(w, h)
+        except cv2.error:
+            pass
 
     def _update(self, delta_time_ms: float) -> None:
         """Advance engine, synchronize state, update animations."""

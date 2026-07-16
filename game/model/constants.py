@@ -43,3 +43,13 @@ JUMP_DURATION_MS = 3500
 
 # How long (in ms) a piece rests after arriving at its destination.
 COOLDOWN_DURATION_MS = 2000
+
+# Material value of each piece type for scoring.
+PIECE_VALUES = {
+    PIECE_PAWN:   1,
+    PIECE_KNIGHT: 3,
+    PIECE_BISHOP: 3,
+    PIECE_ROOK:   5,
+    PIECE_QUEEN:  9,
+    PIECE_KING:   0,
+}
