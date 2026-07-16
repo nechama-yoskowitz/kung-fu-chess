@@ -221,13 +221,11 @@ class TestEscAndCloseStillWork:
         from game.graphics.game_loop import GameLoop
         from unittest.mock import MagicMock
 
-        renderer = MagicMock()
+        frame_composer = MagicMock()
         gm = MagicMock()
 
         loop = GameLoop(
-            renderer=renderer,
+            frame_composer=frame_composer,
             graphics_manager=gm,
-            rows=8,
-            cols=8,
         )
         assert loop.running is False

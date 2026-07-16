@@ -25,12 +25,13 @@ class RealTimeArbiter:
     - resolving completed motions
     """
 
-    def __init__(self):
+    def __init__(self, event_bus=None):
         self.clock = 0
         self.pending_moves = []
         self.active_jumps = []
         self.active_cooldowns = []
         self._next_sequence_id = 0
+        self._event_bus = event_bus
 
     def start_motion(self, piece, from_row, from_col, to_row, to_col):
         """
@@ -105,7 +106,7 @@ class RealTimeArbiter:
         if prev_clock == curr_clock:
             return False
 
-        self.pending_moves, game_over, self.active_jumps, arrived_cells = (
+        self.pending_moves, game_over, self.active_jumps, arrived_cells, resolved_moves = (
             resolve_window(
                 board,
                 self.pending_moves,
@@ -114,6 +115,19 @@ class RealTimeArbiter:
                 self.active_jumps,
             )
         )
+
+        # Publish authoritative resolution events before any further state changes.
+        if self._event_bus and resolved_moves:
+            from game.events.engine_events import MoveResolved
+            for rm in resolved_moves:
+                self._event_bus.publish(MoveResolved(
+                    sequence_id=rm["sequence_id"],
+                    piece=rm["piece"],
+                    outcome=rm["outcome"],
+                    final_row=rm["final_row"],
+                    final_col=rm["final_col"],
+                    promoted_to=rm["promoted_to"],
+                ))
 
         if game_over:
             self.pending_moves = []

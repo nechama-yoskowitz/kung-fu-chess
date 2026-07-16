@@ -61,7 +61,7 @@ def apply_arrived_moves(board, pending_moves, clock, active_jumps=None):
     by the arbiter's update_state, which manages the windowing.
 
     Returns:
-        (still_pending, game_over, active_jumps, arrived_cells)
+        (still_pending, game_over, active_jumps, arrived_cells, resolved_moves)
     """
     if active_jumps is None:
         active_jumps = []
@@ -76,7 +76,7 @@ def resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     This is the primary entry point for event-based resolution.
 
     Returns:
-        (still_pending, game_over, active_jumps, arrived_cells)
+        (still_pending, game_over, active_jumps, arrived_cells, resolved_moves)
     """
     return _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps)
 
@@ -89,7 +89,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
         (still_pending, game_over, active_jumps, arrived_cells)
     """
     if not pending_moves:
-        return [], False, active_jumps, []
+        return [], False, active_jumps, [], []
 
     # Generate all events and filter to the current window
     all_events = decompose_moves_to_events(pending_moves)
@@ -239,6 +239,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
 
     # --- Apply results to board ---
     arrived_cells = []
+    resolved_moves = []
 
     # Phase 1: Clear sources of all non-active moves
     for move in pending_moves:
@@ -252,7 +253,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
         if (r, c) not in move_final_cell.values():
             board[r][c] = EMPTY_CELL
 
-    # Phase 3: Place arrived/stopped pieces
+    # Phase 3: Place arrived/stopped pieces and build resolution data
     for move in pending_moves:
         status = move_status[move.sequence_id]
         if status in ("arrived", "stopped"):
@@ -261,12 +262,40 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 fr, fc = final
                 board[fr][fc] = move.piece
                 # Promotion
+                promoted_to = None
                 if is_pawn(move.piece):
                     color = get_color(move.piece)
                     if fr == pawn_promotion_row(board, color):
                         board[fr][fc] = make_piece(color, PIECE_QUEEN)
+                        promoted_to = board[fr][fc]
                 landed_piece = board[fr][fc]
                 arrived_cells.append((landed_piece, fr, fc))
+                resolved_moves.append({
+                    "sequence_id": move.sequence_id,
+                    "piece": move.piece,
+                    "outcome": status,
+                    "final_row": fr,
+                    "final_col": fc,
+                    "promoted_to": promoted_to,
+                })
+            else:
+                resolved_moves.append({
+                    "sequence_id": move.sequence_id,
+                    "piece": move.piece,
+                    "outcome": status,
+                    "final_row": None,
+                    "final_col": None,
+                    "promoted_to": None,
+                })
+        elif status == "captured":
+            resolved_moves.append({
+                "sequence_id": move.sequence_id,
+                "piece": move.piece,
+                "outcome": "captured",
+                "final_row": None,
+                "final_col": None,
+                "promoted_to": None,
+            })
 
     # Build remaining pending_moves (only ACTIVE ones)
     still_pending = [
@@ -277,4 +306,4 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     if game_over:
         still_pending = []
 
-    return still_pending, game_over, active_jumps, arrived_cells
+    return still_pending, game_over, active_jumps, arrived_cells, resolved_moves

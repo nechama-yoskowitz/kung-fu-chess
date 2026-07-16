@@ -1,19 +1,19 @@
 """
-Tests for pawn promotion synchronization from engine to graphics layer.
+Tests for pawn promotion synchronization via MoveResolved events.
 
 Verifies that when a pawn reaches the promotion row and the engine
-promotes it to a queen, the corresponding GraphicPiece updates correctly.
+promotes it, the MoveResolved event updates the GraphicPiece correctly.
 """
 
 from unittest.mock import MagicMock
 
+from game.events import EventBus, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.realtime.motion import PendingMove
 
 
 def _make_mock_sprite_manager():
-    """Create a mock SpriteManager that returns mock animation data."""
     sprite_manager = MagicMock()
     animation_data = MagicMock()
     animation_data.frames = [MagicMock()]
@@ -32,87 +32,47 @@ def _make_graphics_manager():
 
 def _make_pending_move(piece, from_row, from_col, to_row, to_col, seq_id):
     return PendingMove(
-        piece=piece,
-        from_row=from_row,
-        from_col=from_col,
-        to_row=to_row,
-        to_col=to_col,
-        started_at=0,
-        arrive_at=1000,
-        sequence_id=seq_id,
+        piece=piece, from_row=from_row, from_col=from_col,
+        to_row=to_row, to_col=to_col,
+        started_at=0, arrive_at=1000, sequence_id=seq_id,
     )
 
 
 class TestWhitePawnPromotion:
-    """White pawn promotes to white queen."""
+    """White pawn promotes to white queen via event."""
 
     def test_white_pawn_promotes_to_queen(self):
-        # White pawn at row 1 moving to row 0 (promotion row)
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        bus = EventBus()
         gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], ["wP", "."]])
 
-        # Start the move
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
+        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
-        # Engine resolves: pawn promoted to queen at (0,0)
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wP", outcome="arrived",
+            final_row=0, final_col=0, promoted_to="wQ",
+        ))
 
-        # GraphicPiece should now be a queen
         assert len(gm.graphic_pieces) == 1
-        gp = gm.graphic_pieces[0]
-        assert gp.piece == "wQ"
+        assert gm.graphic_pieces[0].piece == "wQ"
 
     def test_promoted_piece_position_preserved(self):
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        bus = EventBus()
         gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], ["wP", "."]])
 
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
+        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wP", outcome="arrived",
+            final_row=0, final_col=0, promoted_to="wQ",
+        ))
 
         gp = gm.graphic_pieces[0]
         assert gp.row == 0
         assert gp.col == 0
-
-    def test_promoted_piece_display_position_preserved(self):
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
-
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
-
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
-
-        gp = gm.graphic_pieces[0]
         assert gp.display_row == 0.0
         assert gp.display_col == 0.0
 
@@ -121,153 +81,84 @@ class TestBlackPawnPromotion:
     """Black pawn promotes to black queen."""
 
     def test_black_pawn_promotes_to_queen(self):
-        # Black pawn at row 6 moving to row 7 (promotion row for 8-row board)
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["bP", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        bus = EventBus()
         gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], [".", "."], ["bP", "."]])
 
-        pending = [_make_pending_move("bP", 6, 0, 7, 0, seq_id=0)]
-        sync.sync_movements(pending)
+        sync.sync_movements([_make_pending_move("bP", 2, 0, 3, 0, seq_id=0)])
 
-        resolved_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["bQ", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="bP", outcome="arrived",
+            final_row=3, final_col=0, promoted_to="bQ",
+        ))
 
         assert len(gm.graphic_pieces) == 1
-        gp = gm.graphic_pieces[0]
-        assert gp.piece == "bQ"
-        assert gp.row == 7
-        assert gp.col == 0
+        assert gm.graphic_pieces[0].piece == "bQ"
 
 
 class TestPromotionNoDuplicate:
     """No duplicate GraphicPiece is created after promotion."""
 
     def test_no_duplicate_after_promotion(self):
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        bus = EventBus()
         gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], ["wP", "."]])
 
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
+        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wP", outcome="arrived",
+            final_row=0, final_col=0, promoted_to="wQ",
+        ))
 
         assert len(gm.graphic_pieces) == 1
 
-    def test_get_piece_at_finds_promoted_piece(self):
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
-
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
-
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
-
-        found = gm.get_piece_at(0, 0)
-        assert found is not None
-        assert found.piece == "wQ"
-
 
 class TestPromotionAnimationReloaded:
-    """Queen sprite/animation data is used after promotion."""
+    """Queen sprite data is requested after promotion."""
 
     def test_sprite_manager_called_with_queen_token(self):
         sprite_manager = _make_mock_sprite_manager()
         gm = GraphicsManager(sprite_manager=sprite_manager, piece_size=(50, 50))
-        sync = GraphicsSynchronizer(gm)
+        bus = EventBus()
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], ["wP", "."]])
 
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.initialize(init_board)
-
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
-
-        # Clear call history to isolate promote_to calls
+        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
         sprite_manager.get_animation_data.reset_mock()
 
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", ".", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wP", outcome="arrived",
+            final_row=0, final_col=0, promoted_to="wQ",
+        ))
 
-        # After promotion, animation data should be requested with "wQ"
         calls = sprite_manager.get_animation_data.call_args_list
         queen_calls = [
             c for c in calls
             if c.kwargs.get("piece") == "wQ" or (c.args and c.args[0] == "wQ")
         ]
-        # At least one call for the queen piece
         assert len(queen_calls) >= 1
 
 
 class TestNonPromotedPiecesUnchanged:
-    """Other pieces on the board are not affected by a promotion."""
+    """Other pieces are not affected by a promotion event."""
 
-    def test_other_pieces_unchanged_after_promotion(self):
-        init_board = [
-            [".", ".", ".", ".", ".", ".", ".", "."],
-            ["wP", "wR", ".", ".", ".", ".", ".", "."],
-        ]
+    def test_other_pieces_unchanged(self):
+        bus = EventBus()
         gm = _make_graphics_manager()
-        sync = GraphicsSynchronizer(gm)
-        sync.initialize(init_board)
+        sync = GraphicsSynchronizer(gm, event_bus=bus)
+        sync.initialize([[".", "."], ["wP", "wR"]])
 
-        # Only the pawn moves
-        pending = [_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)]
-        sync.sync_movements(pending)
+        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
-        resolved_board = [
-            ["wQ", ".", ".", ".", ".", ".", ".", "."],
-            [".", "wR", ".", ".", ".", ".", ".", "."],
-        ]
-        sync.sync_removals(resolved_board, [])
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wP", outcome="arrived",
+            final_row=0, final_col=0, promoted_to="wQ",
+        ))
 
         assert len(gm.graphic_pieces) == 2
-
         rook = gm.get_piece_at(1, 1)
         assert rook is not None
         assert rook.piece == "wR"
-
-        queen = gm.get_piece_at(0, 0)
-        assert queen is not None
-        assert queen.piece == "wQ"

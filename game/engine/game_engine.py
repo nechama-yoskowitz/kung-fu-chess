@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from game.events import EventBus
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
 
@@ -20,14 +21,16 @@ class GameEngine:
     - board ownership,
     - game-over state,
     - move validation through RuleEngine,
-    - delegating real-time operations to RealTimeArbiter.
+    - delegating real-time operations to RealTimeArbiter,
+    - hosting the event bus for decoupled communication.
     """
 
-    def __init__(self, board):
+    def __init__(self, board, event_bus=None):
         self.board = board
         self.game_over = False
+        self.event_bus = event_bus or EventBus()
         self.rule_engine = RuleEngine()
-        self.arbiter = RealTimeArbiter()
+        self.arbiter = RealTimeArbiter(event_bus=self.event_bus)
 
     # Read-only properties delegating to the arbiter.
 
@@ -42,6 +45,10 @@ class GameEngine:
     @property
     def active_jumps(self):
         return self.arbiter.active_jumps
+
+    @property
+    def active_cooldowns(self):
+        return self.arbiter.active_cooldowns
 
     def request_move(
         self,

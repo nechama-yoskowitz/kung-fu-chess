@@ -36,7 +36,7 @@ def _run_full_sync(engine, gm, sync, duration_frames=600, dt=16.67):
     """Run the sync loop like the real game loop."""
     for _ in range(duration_frames):
         engine.handle_wait(dt)
-        sync.sync_removals(engine.board, engine.pending_moves)
+        sync.sync_removals(engine.board)
         sync.sync_movements(engine.pending_moves)
         gm.update(dt)
 
@@ -51,7 +51,7 @@ class TestSameColorHorizontalCollision:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         engine.request_move(0, 0, 0, 3)  # arrive=3000
@@ -80,7 +80,7 @@ class TestSameColorHorizontalCollision:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         engine.request_move(0, 0, 0, 3)  # wR: arrive=3000
@@ -112,7 +112,7 @@ class TestSameColorVerticalCollision:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         engine.request_move(0, 0, 7, 0)  # arrive=7000
@@ -143,7 +143,7 @@ class TestSameColorDiagonalCollision:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         engine.request_move(0, 0, 4, 4)  # distance=4, arrive=4000
@@ -168,7 +168,7 @@ class TestSameColorWithEnemyPresent:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         # wR1 at (0,0) → (0,5): will be stopped by wR2 at (0,3), stops at (0,2)
@@ -209,7 +209,7 @@ class TestNoFriendlyCaptureEver:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         engine.request_move(0, 0, 0, 3)  # arrive=3000
@@ -236,7 +236,7 @@ class TestStoppedPieceAtCorrectCell:
         ]
         engine = GameEngine(board)
         gm = _make_gm()
-        sync = GraphicsSynchronizer(gm)
+        sync = GraphicsSynchronizer(gm, event_bus=engine.event_bus)
         sync.initialize(board)
 
         # wR1 at (0,0) → (0,3), arrive=3000
