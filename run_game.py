@@ -7,7 +7,6 @@ controller, graphics, input, and UI layers, then runs the game loop.
 
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
-from game.events import MoveResolved
 from game.graphics.frame_composer import FrameComposer
 from game.graphics.game_loop import GameLoop
 from game.graphics.game_screen_composer import GameScreenComposer
@@ -18,7 +17,7 @@ from game.graphics.renderer import Renderer
 from game.graphics.sprite_manager import SpriteManager
 from game.model.board_mapper import BoardMapper
 from game.model.constants import COOLDOWN_DURATION_MS
-from game.model.move_history import MoveHistory
+from game.model.move_history import MoveHistoryObserver
 
 
 STARTING_BOARD = [
@@ -53,7 +52,12 @@ class GameApplication:
 
         self.renderer = Renderer(BOARD_IMAGE_PATH)
         self.sprite_manager = SpriteManager(PIECES_ROOT_PATH)
-        self.move_history = MoveHistory()
+
+        # Move history subscribes to MoveResolved events via the EventBus.
+        self.move_history = MoveHistoryObserver(
+            event_bus=self.engine.event_bus,
+            clock_provider=lambda: self.engine.clock,
+        )
 
         self.rows = len(self.engine.board)
         self.cols = len(self.engine.board[0])
@@ -77,13 +81,6 @@ class GameApplication:
             event_bus=self.engine.event_bus,
         )
         self.synchronizer.initialize(self.engine.board)
-
-        # BoardMapper uses the DISPLAYED board size for cell calculations.
-        # The actual displayed size depends on the screen composer's layout.
-        # We use the original board image cell size for the mapper, and the
-        # mouse adapter will scale coordinates based on displayed board size.
-        self._board_mapper_cell_width = cell_width
-        self._board_mapper_cell_height = cell_height
 
         self.controller = Controller(
             engine=self.engine,
@@ -124,10 +121,6 @@ class GameApplication:
             original_board_size_provider=self._get_original_board_size,
         )
 
-        # Record moves in history when accepted
-        self._original_request_move = self.engine.request_move
-        self.engine.request_move = self._intercepted_request_move
-
     def _get_board_rect(self):
         """Return (left, top, width, height) of the displayed board."""
         m = self.screen_composer.metrics
@@ -137,23 +130,6 @@ class GameApplication:
         """Return (width, height) of the original board image."""
         h, w = self.renderer.board_template.img.shape[:2]
         return (w, h)
-
-    def _intercepted_request_move(self, from_row, from_col, to_row, to_col):
-        """Record move in history if accepted."""
-        result = self._original_request_move(from_row, from_col, to_row, to_col)
-        if result.is_accepted:
-            piece = self.engine.board[from_row][from_col]
-            color = piece[0] if piece != "." else "w"
-            self.move_history.record_move(
-                color=color,
-                clock_ms=self.engine.clock,
-                piece=piece,
-                from_row=from_row,
-                from_col=from_col,
-                to_row=to_row,
-                to_col=to_col,
-            )
-        return result
 
     def run(self):
         game_loop = GameLoop(
