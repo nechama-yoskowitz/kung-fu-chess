@@ -9,8 +9,9 @@ class MouseInputAdapter:
     click actions to the Controller.
 
     Responsibilities:
-    - Listen for left-button mouse clicks on the game window.
-    - Forward raw pixel coordinates to controller.click(x, y).
+    - Listen for left-button mouse clicks (move selection).
+    - Listen for right-button mouse clicks (jump requests).
+    - Forward raw pixel coordinates to controller.click/jump(x, y).
     - Ignore gameplay clicks when game_over_provider returns True.
     - The Controller's BoardMapper handles pixel-to-cell conversion.
     - Does NOT contain chess rules or selection logic.
@@ -26,7 +27,10 @@ class MouseInputAdapter:
 
     def _on_mouse_event(self, event, x, y, flags, param) -> None:
         """OpenCV mouse callback handler."""
+        if self.game_over_provider and self.game_over_provider():
+            return
+
         if event == cv2.EVENT_LBUTTONDOWN:
-            if self.game_over_provider and self.game_over_provider():
-                return
             self.controller.click(x, y)
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            self.controller.jump(x, y)

@@ -39,7 +39,7 @@ ERROR_UNKNOWN_TOKEN      = "ERROR UNKNOWN_TOKEN"
 MOVE_DURATION_MS = 1000
 
 # How long (in ms) a jump/airborne state lasts.
-JUMP_DURATION_MS = 1000
+JUMP_DURATION_MS = 3500
 
 # How long (in ms) a piece rests after arriving at its destination.
 COOLDOWN_DURATION_MS = 2000

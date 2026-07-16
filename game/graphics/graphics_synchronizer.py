@@ -21,6 +21,8 @@ class GraphicsSynchronizer:
         self._synced_sequence_ids: set[int] = set()
         # Maps sequence_id → (GraphicPiece, to_row, to_col, piece_token)
         self._active_movements: dict[int, tuple] = {}
+        # Tracks currently jumping cells as (row, col) → GraphicPiece
+        self._active_jumps: dict[tuple[int, int], object] = {}
 
     def initialize(self, board) -> None:
         """
@@ -34,6 +36,7 @@ class GraphicsSynchronizer:
         self.graphics_manager.initialize_from_board(board)
         self._synced_sequence_ids.clear()
         self._active_movements.clear()
+        self._active_jumps.clear()
 
     def sync_movements(self, pending_moves) -> None:
         """
@@ -76,6 +79,54 @@ class GraphicsSynchronizer:
                 move.piece,
             )
 
+    def sync_jumps(self, active_jumps) -> None:
+        """
+        Synchronize engine ActiveJump state with graphic piece animations.
+
+        - New jumps: transition the corresponding GraphicPiece to JUMP state.
+        - Expired jumps: transition back to IDLE state.
+
+        Association key: (row, col) — a piece can only have one active jump
+        at a given cell. This is safe because the engine prevents a piece
+        from jumping if it is already airborne.
+
+        Parameters
+        ----------
+        active_jumps : list[ActiveJump]
+            The engine's current list of active jumps.
+        """
+        from game.graphics.piece_state_machine import PieceStateMachine
+
+        # Build the set of currently jumping cells from the engine.
+        engine_jumping = {(j.row, j.col) for j in active_jumps}
+
+        # Detect new jumps (in engine but not yet tracked).
+        for jump in active_jumps:
+            key = (jump.row, jump.col)
+            if key in self._active_jumps:
+                continue
+
+            gp = self.graphics_manager.get_piece_at(jump.row, jump.col)
+            if gp is None:
+                continue
+
+            gp.set_state(PieceStateMachine.JUMP)
+            self._active_jumps[key] = gp
+
+        # Detect expired jumps (tracked but no longer in engine).
+        expired_keys = [
+            key for key in self._active_jumps
+            if key not in engine_jumping
+        ]
+
+        for key in expired_keys:
+            gp = self._active_jumps.pop(key)
+            # Only transition if the piece is still in JUMP state
+            # (it may have been removed by capture sync).
+            if gp in self.graphics_manager.graphic_pieces:
+                if gp.state == PieceStateMachine.JUMP:
+                    gp.set_state(PieceStateMachine.IDLE)
+
     def sync_removals(self, board, pending_moves) -> None:
         """
         Reconcile graphic pieces with the engine's authoritative state.
@@ -102,17 +153,27 @@ class GraphicsSynchronizer:
             if seq_id not in active_seq_ids
         ]
 
+        # Track cells already claimed by resolved arrivals to prevent
+        # two same-token pieces from both claiming the same destination.
+        claimed_cells = set()
+
         for seq_id in resolved_ids:
             gp, to_row, to_col, piece_token = self._active_movements.pop(seq_id)
 
             # Check if the piece arrived at its intended destination.
+            # Also verify no other graphic piece already occupies that cell
+            # (prevents two same-token pieces from both claiming one cell).
+            existing_at_dest = self.graphics_manager.get_piece_at(to_row, to_col)
             if (
                 0 <= to_row < len(board)
                 and 0 <= to_col < len(board[0])
                 and board[to_row][to_col] == piece_token
+                and (to_row, to_col) not in claimed_cells
+                and (existing_at_dest is None or existing_at_dest is gp)
             ):
                 # Arrived successfully.
                 gp.finish_move_at(to_row, to_col)
+                claimed_cells.add((to_row, to_col))
                 continue
 
             # Check for promotion: piece arrived but was promoted to a
@@ -128,21 +189,24 @@ class GraphicsSynchronizer:
                 and len(board[to_row][to_col]) >= 2
                 and board[to_row][to_col][0] == piece_token[0]
                 and board[to_row][to_col] != piece_token
+                and (to_row, to_col) not in claimed_cells
             ):
                 # Promotion detected.
                 new_token = board[to_row][to_col]
                 gp.finish_move_at(to_row, to_col)
                 gp.promote_to(new_token)
+                claimed_cells.add((to_row, to_col))
                 continue
 
             # Check if the piece was stopped at another cell.
             found_cell = self._find_piece_on_board(
-                board, piece_token, gp
+                board, piece_token, gp, claimed_cells
             )
 
             if found_cell is not None:
                 # Piece was stopped at this cell.
                 gp.finish_move_at(found_cell[0], found_cell[1])
+                claimed_cells.add(found_cell)
                 continue
 
             # Piece is not on the board anywhere → captured.
@@ -168,15 +232,19 @@ class GraphicsSynchronizer:
         for gp in to_remove:
             self.graphics_manager.remove_piece(gp)
 
-    def _find_piece_on_board(self, board, piece_token, exclude_gp):
+    def _find_piece_on_board(self, board, piece_token, exclude_gp, claimed_cells=None):
         """
         Search the board for a cell containing piece_token that isn't
-        already claimed by another (non-excluded) graphic piece.
+        already claimed by another (non-excluded) graphic piece or
+        already claimed by a previously resolved movement.
 
         Returns (row, col) if found, None otherwise.
         """
+        if claimed_cells is None:
+            claimed_cells = set()
+
         # Collect cells already occupied by other graphic pieces of the same token.
-        claimed = set()
+        claimed = set(claimed_cells)
         for other_gp in self.graphics_manager.graphic_pieces:
             if other_gp is exclude_gp:
                 continue

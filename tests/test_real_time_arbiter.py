@@ -189,7 +189,7 @@ def test_expired_jumps_removed():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
     arbiter.start_jump("wR", 0, 0)
-    # Jump expires at JUMP_DURATION_MS=1000. Advance past it.
+    # Jump expires at JUMP_DURATION_MS. Advance past it.
     arbiter.advance_time(board, JUMP_DURATION_MS + 1)
     assert len(arbiter.active_jumps) == 0
 
