@@ -1,5 +1,5 @@
-from game.graphics.animation_data import AnimationData
-from game.graphics.sprite_loader import SpriteLoader
+from game.graphics.animation.animation_data import AnimationData
+from game.graphics.sprites.sprite_loader import SpriteLoader
 
 
 class SpriteManager:

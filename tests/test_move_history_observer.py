@@ -6,7 +6,8 @@ builds accurate entries, and prevents duplicates.
 """
 
 from game.events import EventBus, MoveResolved
-from game.model.move_history import MoveHistoryObserver, MoveEntry
+from game.history.move_history_observer import MoveHistoryObserver
+from game.history.move_entry import MoveEntry
 
 
 def _make_observer(clock_ms=0):

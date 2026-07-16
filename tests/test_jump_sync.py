@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
-from game.graphics.piece_state_machine import PieceStateMachine
+from game.graphics.pieces.piece_state_machine import PieceStateMachine
 from game.realtime.motion import ActiveJump
 
 

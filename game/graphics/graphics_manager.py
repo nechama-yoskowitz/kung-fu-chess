@@ -1,7 +1,7 @@
 
-from game.graphics.graphic_piece import GraphicPiece
+from game.graphics.pieces.graphic_piece import GraphicPiece
 from game.graphics.renderer import Renderer
-from game.graphics.sprite_manager import SpriteManager
+from game.graphics.sprites.sprite_manager import SpriteManager
 
 
 class GraphicsManager:

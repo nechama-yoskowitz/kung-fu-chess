@@ -1,51 +1,29 @@
 """
 Move history observer — subscribes to MoveResolved events and records
 authoritative move outcomes for display in side panels.
-
-This is a pure Observer: it listens to engine events, records history,
-and exposes read-only data to the UI. It does not modify the engine,
-graphics, or game rules.
 """
 
-from dataclasses import dataclass
-
 from game.events.engine_events import MoveResolved
+from game.history.move_entry import MoveEntry
 
 
-@dataclass(frozen=True)
-class MoveEntry:
-    """Immutable record of a resolved move."""
-
-    sequence_id: int
-    color: str
-    piece: str
-    outcome: str
-    final_row: int | None
-    final_col: int | None
-    promoted_to: str | None
-    captured_piece: str | None
-    timestamp_ms: float
-    description: str
-    time_display: str
+_PIECE_NAMES = {
+    "K": "King",
+    "Q": "Queen",
+    "R": "Rook",
+    "B": "Bishop",
+    "N": "Knight",
+    "P": "Pawn",
+}
 
 
 class MoveHistoryObserver:
     """
     Subscribes to MoveResolved events and builds a chronological
     move history for each side.
-
-    The engine clock at event publish time is used as the timestamp.
     """
 
     def __init__(self, event_bus, clock_provider):
-        """
-        Parameters
-        ----------
-        event_bus : EventBus
-            The bus to subscribe to.
-        clock_provider : callable
-            Returns the current engine clock (ms) when called.
-        """
         self._white_moves: list[MoveEntry] = []
         self._black_moves: list[MoveEntry] = []
         self._seen_sequence_ids: set[int] = set()
@@ -65,17 +43,13 @@ class MoveHistoryObserver:
 
     @property
     def white_entries(self) -> list[MoveEntry]:
-        """Full structured entries for white."""
         return self._white_moves
 
     @property
     def black_entries(self) -> list[MoveEntry]:
-        """Full structured entries for black."""
         return self._black_moves
 
     def _on_move_resolved(self, event: MoveResolved) -> None:
-        """Handle a MoveResolved event — record the move outcome."""
-        # Prevent duplicate entries for the same sequence_id
         if event.sequence_id in self._seen_sequence_ids:
             return
         self._seen_sequence_ids.add(event.sequence_id)
@@ -106,7 +80,6 @@ class MoveHistoryObserver:
 
     @staticmethod
     def _build_description(event: MoveResolved) -> str:
-        """Build a readable move description from the event."""
         piece_name = _PIECE_NAMES.get(event.piece[1], event.piece) if len(event.piece) >= 2 else event.piece
 
         if event.outcome == "captured":
@@ -115,7 +88,6 @@ class MoveHistoryObserver:
         if event.outcome == "stopped":
             return f"{piece_name} stopped at ({event.final_row},{event.final_col})"
 
-        # Arrived
         desc = f"{piece_name} -> ({event.final_row},{event.final_col})"
 
         if event.promoted_to:
@@ -130,18 +102,7 @@ class MoveHistoryObserver:
 
     @staticmethod
     def _format_time(ms: float) -> str:
-        """Format milliseconds as MM:SS.mmm."""
         total_seconds = ms / 1000
         minutes = int(total_seconds // 60)
         seconds = total_seconds % 60
         return f"{minutes:02d}:{seconds:05.2f}"
-
-
-_PIECE_NAMES = {
-    "K": "King",
-    "Q": "Queen",
-    "R": "Rook",
-    "B": "Bishop",
-    "N": "Knight",
-    "P": "Pawn",
-}

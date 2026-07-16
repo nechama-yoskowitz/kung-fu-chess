@@ -1,6 +1,6 @@
 from game.events.engine_events import MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
-from game.graphics.piece_state_machine import PieceStateMachine
+from game.graphics.pieces.piece_state_machine import PieceStateMachine
 
 
 class GraphicsSynchronizer:

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from game.graphics.animation_data import AnimationData
+from game.graphics.animation.animation_data import AnimationData
 from game.graphics.img import Img
 
 

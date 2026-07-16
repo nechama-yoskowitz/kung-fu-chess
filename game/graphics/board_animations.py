@@ -1,5 +1,5 @@
-from game.graphics.animation import Animation
-from game.graphics.sprite_manager import SpriteManager
+from game.graphics.animation.animation import Animation
+from game.graphics.sprites.sprite_manager import SpriteManager
 
 
 class BoardAnimations:

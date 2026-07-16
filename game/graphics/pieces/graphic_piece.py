@@ -1,7 +1,7 @@
-from game.graphics.animation import Animation
-from game.graphics.graphic_movement import GraphicMovement
-from game.graphics.sprite_manager import SpriteManager
-from game.graphics.piece_state_machine import PieceStateMachine
+from game.graphics.animation.animation import Animation
+from game.graphics.pieces.graphic_movement import GraphicMovement
+from game.graphics.sprites.sprite_manager import SpriteManager
+from game.graphics.pieces.piece_state_machine import PieceStateMachine
 
 class GraphicPiece:
     

@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from game.graphics.sprite_loader import SpriteLoader
+from game.graphics.sprites.sprite_loader import SpriteLoader
 
 
 PIECES_ROOT = Path("game/graphics/assets/pieces")
