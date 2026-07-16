@@ -115,10 +115,27 @@ class GraphicsSynchronizer:
                 gp.finish_move_at(to_row, to_col)
                 continue
 
+            # Check for promotion: piece arrived but was promoted to a
+            # different token (e.g. wP → wQ). The board cell contains
+            # a same-color piece that differs from the original token.
+            # Promotion only applies to pawns.
+            if (
+                0 <= to_row < len(board)
+                and 0 <= to_col < len(board[0])
+                and board[to_row][to_col] != "."
+                and len(piece_token) >= 2
+                and piece_token[1] == "P"
+                and len(board[to_row][to_col]) >= 2
+                and board[to_row][to_col][0] == piece_token[0]
+                and board[to_row][to_col] != piece_token
+            ):
+                # Promotion detected.
+                new_token = board[to_row][to_col]
+                gp.finish_move_at(to_row, to_col)
+                gp.promote_to(new_token)
+                continue
+
             # Check if the piece was stopped at another cell.
-            # The engine places stopped pieces on the board. Search for a
-            # cell containing this piece token that isn't already claimed
-            # by another graphic piece.
             found_cell = self._find_piece_on_board(
                 board, piece_token, gp
             )

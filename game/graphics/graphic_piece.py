@@ -139,3 +139,16 @@ class GraphicPiece:
 
         if self.state == PieceStateMachine.MOVE:
             self.set_state(PieceStateMachine.LONG_REST)
+
+    def promote_to(self, new_piece: str) -> None:
+        """
+        Change the piece token and reload the animation for the new piece type.
+
+        Called by the synchronizer when the engine promotes a pawn.
+        Preserves position, display position, and current state.
+        Recreates the animation using the new piece's sprites.
+        """
+        self.piece = new_piece
+        self.animation = self._create_animation(
+            self.state_machine.current_state
+        )
