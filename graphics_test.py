@@ -65,7 +65,10 @@ controller = Controller(
 
 # --- Mouse input adapter ---
 
-mouse_input_adapter = MouseInputAdapter(controller)
+mouse_input_adapter = MouseInputAdapter(
+    controller,
+    game_over_provider=lambda: engine.game_over,
+)
 
 # --- Run the game loop (interactive) ---
 
@@ -81,6 +84,7 @@ game_loop = GameLoop(
     cooldown_provider=lambda: GraphicsSynchronizer.get_cooldown_indicators(
         engine.arbiter.active_cooldowns, engine.clock, COOLDOWN_DURATION_MS
     ),
+    game_over_provider=lambda: engine.game_over,
     mouse_input_adapter=mouse_input_adapter,
     selection_provider=lambda: controller.selected,
     target_fps=60,

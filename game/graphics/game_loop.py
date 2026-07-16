@@ -21,6 +21,7 @@ class GameLoop:
         board_provider=None,
         engine_updater=None,
         cooldown_provider=None,
+        game_over_provider=None,
         mouse_input_adapter: MouseInputAdapter | None = None,
         selection_provider=None,
         target_fps: int = 60,
@@ -38,6 +39,7 @@ class GameLoop:
         self.board_provider = board_provider
         self.engine_updater = engine_updater
         self.cooldown_provider = cooldown_provider
+        self.game_over_provider = game_over_provider
         self.mouse_input_adapter = mouse_input_adapter
         self.selection_provider = selection_provider
         self.target_fps = target_fps
@@ -114,6 +116,11 @@ class GameLoop:
                             rows=self.rows,
                             cols=self.cols,
                         )
+
+                # Draw game-over overlay and text on top of everything.
+                if self.game_over_provider and self.game_over_provider():
+                    self.renderer.draw_game_over_overlay()
+                    self.renderer.draw_centered_text("GAME OVER")
 
                 delay_ms = max(1, int(1000 / self.target_fps))
 

@@ -86,6 +86,37 @@ class Img:
                     cv2.FONT_HERSHEY_SIMPLEX, font_size,
                     color, thickness, cv2.LINE_AA)
 
+    def put_centered_text(self, txt, font_size, color=(255, 255, 255), thickness=2):
+        """
+        Draw text centered horizontally and vertically on the image.
+
+        Parameters
+        ----------
+        txt : str
+            Text to draw.
+        font_size : float
+            Font scale for cv2.
+        color : tuple
+            BGR color.
+        thickness : int
+            Text thickness.
+        """
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+
+        h, w = self.img.shape[:2]
+        text_size, baseline = cv2.getTextSize(
+            txt, cv2.FONT_HERSHEY_SIMPLEX, font_size, thickness
+        )
+        text_w, text_h = text_size
+
+        x = (w - text_w) // 2
+        y = (h + text_h) // 2
+
+        cv2.putText(self.img, txt, (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_size,
+                    color, thickness, cv2.LINE_AA)
+
     def draw_rectangle(self, x, y, width, height, color=(0, 255, 255), thickness=2):
         """
         Draw a rectangle border on the image.

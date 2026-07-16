@@ -179,3 +179,61 @@ class Renderer:
             color=color,
             thickness=thickness,
         )
+
+    def draw_game_over_overlay(self, alpha: float = 0.6) -> None:
+        """
+        Draw a semi-transparent dark overlay over the entire board.
+
+        Parameters
+        ----------
+        alpha : float
+            Opacity of the dark overlay (0.0–1.0).
+        """
+        if self.canvas is None:
+            raise RuntimeError(
+                "start_frame() must be called before drawing"
+            )
+
+        h, w = self.canvas.img.shape[:2]
+
+        self.canvas.blend_rectangle(
+            x=0,
+            y=0,
+            width=w,
+            height=h,
+            color=(0, 0, 0),
+            alpha=alpha,
+        )
+
+    def draw_centered_text(
+    self,
+    text: str,
+    font_size: float = 2.0,
+    color: tuple = (255, 255, 255),
+    thickness: int = 3,
+    ) -> None:
+        """
+        Draw text centered on the board.
+
+        Parameters
+        ----------
+        text : str
+            The text to display.
+        font_size : float
+            Font scale.
+        color : tuple
+            BGR color.
+        thickness : int
+            Text thickness.
+        """
+        if self.canvas is None:
+            raise RuntimeError(
+                "start_frame() must be called before drawing"
+            )
+
+        self.canvas.put_centered_text(
+            txt=text,
+            font_size=font_size,
+            color=color,
+            thickness=thickness,
+        )
