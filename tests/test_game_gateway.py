@@ -137,6 +137,7 @@ class TestControllerUsesGateway:
             ["wR", ".", ".", "."],
             [".", ".", ".", "."],
         ]
+        mock_gw.player_color = None
         mock_gw.is_piece_moving_at.return_value = False
         mock_gw.is_piece_resting_at.return_value = False
         mock_gw.request_move.return_value = MoveRequestResult(
@@ -156,6 +157,7 @@ class TestControllerUsesGateway:
     def test_controller_jump_uses_gateway(self):
         mock_gw = MagicMock(spec=GameCommandGateway)
         mock_gw.board = [["wR", ".", ".", "."]]
+        mock_gw.player_color = None
         mock_gw.request_jump.return_value = True
 
         mapper = BoardMapper(cell_width=100, cell_height=100)

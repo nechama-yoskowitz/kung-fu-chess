@@ -34,6 +34,11 @@ class NetworkGameGateway(GameCommandGateway):
     def board(self) -> list[list[str]]:
         return self._state.board
 
+    @property
+    def player_color(self) -> str | None:
+        """Returns the assigned player color, preventing selection of opponent pieces."""
+        return self._state.player_color
+
     def is_piece_moving_at(self, row: int, col: int) -> bool:
         # Without local engine tracking, we cannot know with certainty.
         # Return False to allow selection. The server will reject invalid moves.

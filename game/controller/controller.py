@@ -1,6 +1,6 @@
 from game.model.board_mapper import BoardMapper
 from game.model.board import is_inside_board
-from game.model.pieces import same_color, is_empty
+from game.model.pieces import same_color, is_empty, get_color
 
 
 class Controller:
@@ -31,9 +31,14 @@ class Controller:
             Pixel-to-cell converter.
         """
         if gateway is not None:
-            self._gateway = gateway
+            # If a raw engine-like object was passed as gateway (legacy positional
+            # usage), detect it by the absence of player_color and wrap it.
+            if not hasattr(gateway, 'player_color'):
+                from game.controller.local_game_gateway import LocalGameGateway
+                self._gateway = LocalGameGateway(gateway)
+            else:
+                self._gateway = gateway
         elif engine is not None:
-            # Backward compatibility: wrap engine in a LocalGameGateway.
             from game.controller.local_game_gateway import LocalGameGateway
             self._gateway = LocalGameGateway(engine)
         else:
@@ -77,6 +82,7 @@ class Controller:
                 not is_empty(clicked_piece)
                 and not self._gateway.is_piece_moving_at(row, col)
                 and not self._gateway.is_piece_resting_at(row, col)
+                and self._is_own_piece(clicked_piece)
             ):
                 self.selected = (row, col)
 
@@ -127,3 +133,15 @@ class Controller:
             return False
 
         return self._gateway.request_jump(row, col)
+
+    def _is_own_piece(self, piece: str) -> bool:
+        """
+        Check if the piece belongs to this player.
+
+        If gateway.player_color is None (local mode), all pieces are selectable.
+        In network mode, only pieces matching the assigned color can be selected.
+        """
+        color = self._gateway.player_color
+        if color is None:
+            return True
+        return get_color(piece) == color

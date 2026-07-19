@@ -256,8 +256,13 @@ class TestTransportWithServer:
         transport.start()
 
         # Wait for messages to arrive
-        time.sleep(1.5)
-        messages = transport.drain_incoming()
+        for _ in range(40):  # up to 4 seconds
+            time.sleep(0.1)
+            messages = transport.drain_incoming()
+            if messages:
+                break
+        if not messages:
+            messages = transport.drain_incoming()
         transport.stop(timeout=3.0)
 
         # Should have received player_assigned + game_state

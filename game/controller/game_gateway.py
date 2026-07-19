@@ -30,6 +30,16 @@ class GameCommandGateway:
     def board(self) -> list[list[str]]:
         raise NotImplementedError
 
+    @property
+    def player_color(self) -> str | None:
+        """
+        The color this client controls ('w' or 'b'), or None if unrestricted.
+
+        When set, the Controller should only allow selecting pieces of this color.
+        Local mode returns None (both colors playable).
+        """
+        return None
+
     def is_piece_moving_at(self, row: int, col: int) -> bool:
         raise NotImplementedError
 
