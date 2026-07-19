@@ -38,6 +38,8 @@ class ServerMessageProcessor:
         self._on_shutdown = on_shutdown
         # Track active graphic movements by sequence_id
         self._active_movements: dict[int, object] = {}
+        # Track source cell for each in-flight move (for board updates on resolve)
+        self._move_sources: dict[int, tuple[int, int]] = {}
 
     def process_messages(self, messages: list[dict]) -> None:
         """Process up to MAX_MESSAGES_PER_FRAME messages in order."""
@@ -98,6 +100,10 @@ class ServerMessageProcessor:
         if duration_ms <= 0:
             return
 
+        # Track source cell for board update on resolution
+        if seq_id is not None and from_row is not None and from_col is not None:
+            self._move_sources[seq_id] = (from_row, from_col)
+
         gp = self._gm.get_piece_at(from_row, from_col)
         if gp is None:
             return
@@ -122,7 +128,22 @@ class ServerMessageProcessor:
         piece = payload.get("piece", "")
 
         gp = self._active_movements.pop(seq_id, None)
+        source = self._move_sources.pop(seq_id, None)
 
+        # Update authoritative client board state
+        if source is not None:
+            from_row, from_col = source
+            self._state.apply_move_resolved(
+                from_row=from_row,
+                from_col=from_col,
+                piece=piece,
+                outcome=outcome or "arrived",
+                final_row=final_row,
+                final_col=final_col,
+                promoted_to=promoted_to,
+            )
+
+        # Update graphics
         if outcome == "captured":
             if gp and gp in self._gm.graphic_pieces:
                 self._gm.remove_piece(gp)

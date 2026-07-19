@@ -41,3 +41,33 @@ class ClientGameState:
         self.white_score = white_score
         self.black_score = black_score
         self.game_over = game_over
+
+    def apply_move_resolved(
+        self,
+        from_row: int,
+        from_col: int,
+        piece: str,
+        outcome: str,
+        final_row: int | None,
+        final_col: int | None,
+        promoted_to: str | None,
+    ) -> None:
+        """
+        Update the board from an authoritative move_resolved message.
+
+        Clears the source cell and places the piece at the destination
+        according to the outcome.
+        """
+        # Clear source cell (the piece has left)
+        if 0 <= from_row < len(self.board) and 0 <= from_col < len(self.board[0]):
+            self.board[from_row][from_col] = EMPTY_CELL
+
+        if outcome == "captured":
+            # Mover was destroyed — don't place anything
+            return
+
+        # Arrived or stopped — place piece at destination
+        if final_row is not None and final_col is not None:
+            if 0 <= final_row < len(self.board) and 0 <= final_col < len(self.board[0]):
+                placed_piece = promoted_to if promoted_to else piece
+                self.board[final_row][final_col] = placed_piece

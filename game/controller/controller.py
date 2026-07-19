@@ -44,8 +44,32 @@ class Controller:
         else:
             raise ValueError("Controller requires either gateway or engine")
 
-        self.selected = None
+        self._selected = None
         self.board_mapper = board_mapper or BoardMapper()
+
+    @property
+    def selected(self):
+        """
+        The currently selected cell, or None.
+
+        Automatically clears if the selected cell has become empty
+        or no longer contains an own piece (e.g. the piece moved away
+        due to a server-resolved move, or was captured).
+        """
+        if self._selected is not None:
+            row, col = self._selected
+            board = self._gateway.board
+            if row < len(board) and col < len(board[0]):
+                piece = board[row][col]
+                if is_empty(piece) or not self._is_own_piece(piece):
+                    self._selected = None
+            else:
+                self._selected = None
+        return self._selected
+
+    @selected.setter
+    def selected(self, value):
+        self._selected = value
 
     @property
     def board(self):

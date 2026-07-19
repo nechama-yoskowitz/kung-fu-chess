@@ -22,6 +22,7 @@ from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.mouse_input_adapter import MouseInputAdapter
 from game.graphics.renderer import Renderer
 from game.graphics.sprites.sprite_manager import SpriteManager
+from game.history.move_history_observer import MoveHistoryObserver
 from game.model.board_mapper import BoardMapper
 from game.sound.sound_observer import SoundObserver
 from game.sound.sound_player import SoundPlayer
@@ -98,6 +99,12 @@ class NetworkGameApplication:
             sound_player=self.sound_player,
         )
 
+        # Move history
+        self.move_history = MoveHistoryObserver(
+            event_bus=self.event_bus,
+            clock_provider=lambda: self.state.clock,
+        )
+
         # Frame composition
         self.frame_composer = FrameComposer(
             renderer=self.renderer,
@@ -114,6 +121,8 @@ class NetworkGameApplication:
             window_height=WINDOW_HEIGHT,
             white_score_provider=lambda: self.state.white_score,
             black_score_provider=lambda: self.state.black_score,
+            white_moves_provider=lambda: self.move_history.white_moves,
+            black_moves_provider=lambda: self.move_history.black_moves,
         )
 
         self.mouse_input_adapter = MouseInputAdapter(
