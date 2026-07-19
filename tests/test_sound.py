@@ -152,5 +152,6 @@ class TestEngineIndependence:
 
     def test_graphics_sync_has_no_sound_import(self):
         import game.graphics.graphics_synchronizer as gs
-        source = open(gs.__file__).read()
+        with open(gs.__file__) as f:
+            source = f.read()
         assert "sound" not in source

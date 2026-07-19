@@ -1,28 +1,221 @@
 """
-Temporary message protocol for the WebSocket server.
+Kung-Fu Chess multiplayer protocol.
 
-Handles message parsing and response construction.
-Completely independent from game engine and graphics.
+Defines the JSON message format exchanged between client and server over WebSocket.
+
+Design decisions:
+- Server is authoritative: client sends commands, server validates and broadcasts state.
+- State sync uses full board snapshots on connect + incremental events during play.
+  This avoids missed-event desynchronization without sending the full board every frame.
+- All messages use a versioned envelope: {"version": 1, "type": "...", "payload": {...}}
+- Coordinates are (row, col) integers, 0-indexed from top-left.
+- Piece tokens use the engine format: "wR", "bP", etc.
+- Timestamps are engine clock values in milliseconds (float).
 """
 
 import json
+from dataclasses import dataclass, asdict
+from typing import Any
+
+PROTOCOL_VERSION = 1
 
 
-def handle_message(message: str) -> str:
+# ─── Envelope ──────────────────────────────────────────────────────────────────
+
+
+def encode_message(msg_type: str, payload: dict | None = None) -> str:
+    """Serialize a protocol message to JSON string."""
+    envelope = {
+        "version": PROTOCOL_VERSION,
+        "type": msg_type,
+        "payload": payload or {},
+    }
+    return json.dumps(envelope)
+
+
+def decode_message(raw: str) -> dict | None:
     """
-    Process an incoming message and return the response string.
+    Deserialize a JSON protocol message.
 
-    Protocol:
-    - "ping" → "pong"
-    - empty → JSON error
-    - anything else → JSON echo
+    Returns the parsed dict with "version", "type", "payload" keys,
+    or None if the message is malformed.
     """
-    if not message or not message.strip():
-        return json.dumps({"type": "error", "message": "empty_message"})
+    try:
+        msg = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
 
-    stripped = message.strip()
+    if not isinstance(msg, dict):
+        return None
 
-    if stripped == "ping":
-        return "pong"
+    if "version" not in msg or "type" not in msg:
+        return None
 
-    return json.dumps({"type": "echo", "payload": stripped})
+    return msg
+
+
+def make_error(message: str, code: str = "protocol_error") -> str:
+    """Create an error response message."""
+    return encode_message("error", {"code": code, "message": message})
+
+
+# ─── Client → Server message types ────────────────────────────────────────────
+
+# move_request: client asks to move a piece
+# jump_request: client asks to jump a piece
+# ping: keepalive
+
+CLIENT_MESSAGE_TYPES = {"move_request", "jump_request", "ping"}
+
+
+# ─── Server → Client message types ────────────────────────────────────────────
+
+# game_state: full board snapshot (sent on connect and periodically if needed)
+# move_accepted: confirms a move was started, includes timing data
+# move_rejected: explains why a move failed
+# move_resolved: a pending move reached its outcome
+# jump_accepted: confirms a jump was started
+# jump_rejected: explains why a jump failed
+# game_ended: the game is over
+# pong: keepalive response
+# error: protocol-level error
+
+SERVER_MESSAGE_TYPES = {
+    "game_state", "move_accepted", "move_rejected",
+    "move_resolved", "jump_accepted", "jump_rejected",
+    "game_ended", "pong", "error",
+}
+
+
+# ─── Payload schemas ──────────────────────────────────────────────────────────
+
+
+def make_move_request(from_row: int, from_col: int, to_row: int, to_col: int) -> str:
+    """Client → Server: request a move."""
+    return encode_message("move_request", {
+        "from_row": from_row,
+        "from_col": from_col,
+        "to_row": to_row,
+        "to_col": to_col,
+    })
+
+
+def make_jump_request(row: int, col: int) -> str:
+    """Client → Server: request a jump."""
+    return encode_message("jump_request", {
+        "row": row,
+        "col": col,
+    })
+
+
+def make_game_state(board: list[list[str]], clock: float,
+                    white_score: int, black_score: int,
+                    game_over: bool) -> str:
+    """Server → Client: full board snapshot."""
+    return encode_message("game_state", {
+        "board": board,
+        "clock": clock,
+        "white_score": white_score,
+        "black_score": black_score,
+        "game_over": game_over,
+    })
+
+
+def make_move_accepted(sequence_id: int, piece: str,
+                       from_row: int, from_col: int,
+                       to_row: int, to_col: int,
+                       started_at: float, arrive_at: float) -> str:
+    """Server → Client: move was validated and started."""
+    return encode_message("move_accepted", {
+        "sequence_id": sequence_id,
+        "piece": piece,
+        "from_row": from_row,
+        "from_col": from_col,
+        "to_row": to_row,
+        "to_col": to_col,
+        "started_at": started_at,
+        "arrive_at": arrive_at,
+    })
+
+
+def make_move_rejected(reason: str, from_row: int, from_col: int,
+                       to_row: int, to_col: int) -> str:
+    """Server → Client: move was rejected."""
+    return encode_message("move_rejected", {
+        "reason": reason,
+        "from_row": from_row,
+        "from_col": from_col,
+        "to_row": to_row,
+        "to_col": to_col,
+    })
+
+
+def make_move_resolved(sequence_id: int, piece: str, outcome: str,
+                       final_row: int | None, final_col: int | None,
+                       promoted_to: str | None,
+                       captured_piece: str | None) -> str:
+    """Server → Client: a move reached its final outcome."""
+    return encode_message("move_resolved", {
+        "sequence_id": sequence_id,
+        "piece": piece,
+        "outcome": outcome,
+        "final_row": final_row,
+        "final_col": final_col,
+        "promoted_to": promoted_to,
+        "captured_piece": captured_piece,
+    })
+
+
+def make_jump_accepted(piece: str, row: int, col: int, expires_at: float) -> str:
+    """Server → Client: jump was validated and started."""
+    return encode_message("jump_accepted", {
+        "piece": piece,
+        "row": row,
+        "col": col,
+        "expires_at": expires_at,
+    })
+
+
+def make_jump_rejected(reason: str, row: int, col: int) -> str:
+    """Server → Client: jump was rejected."""
+    return encode_message("jump_rejected", {
+        "reason": reason,
+        "row": row,
+        "col": col,
+    })
+
+
+def make_game_ended(winner: str, loser: str) -> str:
+    """Server → Client: game over."""
+    return encode_message("game_ended", {
+        "winner": winner,
+        "loser": loser,
+    })
+
+
+def make_pong() -> str:
+    """Server → Client: keepalive response."""
+    return encode_message("pong")
+
+
+# ─── Validation ───────────────────────────────────────────────────────────────
+
+
+def validate_move_request(payload: dict) -> str | None:
+    """Return error message if payload is invalid, None if valid."""
+    for field in ("from_row", "from_col", "to_row", "to_col"):
+        if field not in payload:
+            return f"missing field: {field}"
+        if not isinstance(payload[field], int):
+            return f"field {field} must be an integer"
+    return None
+
+
+def validate_jump_request(payload: dict) -> str | None:
+    """Return error message if payload is invalid, None if valid."""
+    for field in ("row", "col"):
+        if field not in payload:
+            return f"missing field: {field}"
+        if not isinstance(payload[field], int):
+            return f"field {field} must be an integer"
+    return None

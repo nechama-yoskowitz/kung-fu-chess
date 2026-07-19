@@ -1,7 +1,8 @@
 """
-Tests for WebSocket server, client connectivity, and protocol.
+Tests for WebSocket server integration: connectivity, messaging, disconnect.
 
 Uses a free local port per test to avoid conflicts.
+Protocol-level tests are in test_protocol.py.
 """
 
 import asyncio
@@ -11,46 +12,7 @@ import pytest
 import pytest_asyncio
 import websockets
 
-from game.server.protocol import handle_message
 from game.server.websocket_server import GameWebSocketServer
-
-
-# --- Protocol unit tests (no networking) ---
-
-
-class TestProtocol:
-    """Protocol message handling logic."""
-
-    def test_ping_returns_pong(self):
-        assert handle_message("ping") == "pong"
-
-    def test_echo_returns_json(self):
-        result = json.loads(handle_message("hello"))
-        assert result["type"] == "echo"
-        assert result["payload"] == "hello"
-
-    def test_echo_strips_whitespace_in_payload(self):
-        result = json.loads(handle_message("  hello world  "))
-        assert result["payload"] == "hello world"
-
-    def test_empty_message_returns_error(self):
-        result = json.loads(handle_message(""))
-        assert result["type"] == "error"
-        assert result["message"] == "empty_message"
-
-    def test_whitespace_only_returns_error(self):
-        result = json.loads(handle_message("   "))
-        assert result["type"] == "error"
-        assert result["message"] == "empty_message"
-
-    def test_ping_with_surrounding_whitespace_is_still_ping(self):
-        """'  ping  ' strips to 'ping' → pong."""
-        assert handle_message("  ping  ") == "pong"
-
-    def test_unknown_message_is_echoed(self):
-        result = json.loads(handle_message("foobar123"))
-        assert result["type"] == "echo"
-        assert result["payload"] == "foobar123"
 
 
 # --- Integration tests (require running server) ---
@@ -83,12 +45,17 @@ class TestClientConnection:
     async def test_client_can_connect(self, server):
         _, port = server
         async with websockets.connect(f"ws://localhost:{port}") as ws:
-            await ws.send("ping")
-            assert await ws.recv() == "pong"
+            # First message is player_assigned, second is game_state
+            assigned = await ws.recv()
+            assert "player_assigned" in assigned
+            state = await ws.recv()
+            assert "game_state" in state
 
     async def test_ping_returns_pong(self, server):
         _, port = server
         async with websockets.connect(f"ws://localhost:{port}") as ws:
+            await ws.recv()  # player_assigned
+            await ws.recv()  # game_state
             await ws.send("ping")
             response = await ws.recv()
             assert response == "pong"
@@ -96,6 +63,8 @@ class TestClientConnection:
     async def test_echo_response(self, server):
         _, port = server
         async with websockets.connect(f"ws://localhost:{port}") as ws:
+            await ws.recv()  # player_assigned
+            await ws.recv()  # game_state
             await ws.send("hello server")
             response = json.loads(await ws.recv())
             assert response["type"] == "echo"
@@ -104,10 +73,12 @@ class TestClientConnection:
     async def test_empty_message_error(self, server):
         _, port = server
         async with websockets.connect(f"ws://localhost:{port}") as ws:
+            await ws.recv()  # player_assigned
+            await ws.recv()  # game_state
             await ws.send("")
             response = json.loads(await ws.recv())
             assert response["type"] == "error"
-            assert response["message"] == "empty_message"
+            assert "empty_message" in str(response["payload"])
 
 
 @pytest.mark.asyncio
@@ -116,6 +87,10 @@ class TestMultipleClients:
         _, port = server
         uri = f"ws://localhost:{port}"
         async with websockets.connect(uri) as ws1, websockets.connect(uri) as ws2:
+            await ws1.recv()  # player_assigned
+            await ws1.recv()  # game_state
+            await ws2.recv()  # player_assigned
+            await ws2.recv()  # game_state
             await ws1.send("ping")
             await ws2.send("hello")
             r1 = await ws1.recv()
@@ -131,10 +106,14 @@ class TestClientDisconnect:
         uri = f"ws://localhost:{port}"
 
         ws = await websockets.connect(uri)
+        await ws.recv()  # player_assigned
+        await ws.recv()  # game_state
         await ws.close()
         await asyncio.sleep(0.05)
 
         async with websockets.connect(uri) as ws2:
+            await ws2.recv()  # player_assigned (gets freed white slot)
+            await ws2.recv()  # game_state
             await ws2.send("ping")
             assert await ws2.recv() == "pong"
 
