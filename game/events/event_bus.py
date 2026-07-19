@@ -19,6 +19,18 @@ class EventBus:
         """Register a handler for a specific event type."""
         self._listeners.setdefault(event_type, []).append(handler)
 
+    def unsubscribe(self, event_type: type, handler: Callable) -> None:
+        """Remove one registration of handler for event_type. No-op if not found."""
+        handlers = self._listeners.get(event_type)
+        if handlers is None:
+            return
+        try:
+            handlers.remove(handler)
+        except ValueError:
+            return
+        if not handlers:
+            del self._listeners[event_type]
+
     def publish(self, event: Any) -> None:
         """Publish an event to all registered handlers of its type."""
         for handler in self._listeners.get(type(event), []):

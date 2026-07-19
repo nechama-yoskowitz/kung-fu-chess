@@ -197,3 +197,85 @@ class TestMoveResolvedPublishedByEngine:
         # Board should show wR at (0,2) when the event fires
         assert board_snapshots[0][2] == "wR"
         assert board_snapshots[0][0] == "."
+
+
+class TestEventBusUnsubscribe:
+    """EventBus.unsubscribe behavior."""
+
+    def test_unsubscribed_handler_no_longer_receives_events(self):
+        bus = EventBus()
+        received = []
+        handler = lambda e: received.append(e)
+
+        bus.subscribe(MoveResolved, handler)
+        bus.unsubscribe(MoveResolved, handler)
+
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wR", outcome="arrived",
+            final_row=0, final_col=0, promoted_to=None,
+        ))
+
+        assert len(received) == 0
+
+    def test_unsubscribing_one_does_not_remove_others(self):
+        bus = EventBus()
+        results_a = []
+        results_b = []
+        handler_a = lambda e: results_a.append(e)
+        handler_b = lambda e: results_b.append(e)
+
+        bus.subscribe(MoveResolved, handler_a)
+        bus.subscribe(MoveResolved, handler_b)
+        bus.unsubscribe(MoveResolved, handler_a)
+
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wR", outcome="arrived",
+            final_row=0, final_col=0, promoted_to=None,
+        ))
+
+        assert len(results_a) == 0
+        assert len(results_b) == 1
+
+    def test_unsubscribe_unknown_handler_is_noop(self):
+        bus = EventBus()
+        other_handler = lambda e: None
+
+        bus.subscribe(MoveResolved, lambda e: None)
+        # Should not raise
+        bus.unsubscribe(MoveResolved, other_handler)
+
+    def test_unsubscribe_unknown_event_type_is_noop(self):
+        bus = EventBus()
+
+        class UnknownEvent:
+            pass
+
+        # No subscriptions exist at all for UnknownEvent — should not raise
+        bus.unsubscribe(UnknownEvent, lambda e: None)
+
+    def test_duplicate_subscriptions_one_unsubscribe_removes_one(self):
+        bus = EventBus()
+        received = []
+        handler = lambda e: received.append(e)
+
+        bus.subscribe(MoveResolved, handler)
+        bus.subscribe(MoveResolved, handler)
+        bus.unsubscribe(MoveResolved, handler)
+
+        bus.publish(MoveResolved(
+            sequence_id=0, piece="wR", outcome="arrived",
+            final_row=0, final_col=0, promoted_to=None,
+        ))
+
+        # One registration remains, so handler is called once
+        assert len(received) == 1
+
+    def test_removing_final_handler_cleans_event_type_entry(self):
+        bus = EventBus()
+        handler = lambda e: None
+
+        bus.subscribe(MoveResolved, handler)
+        bus.unsubscribe(MoveResolved, handler)
+
+        # Internal dict should not retain the empty key
+        assert MoveResolved not in bus._listeners

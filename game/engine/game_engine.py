@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
 from game.events import EventBus
-from game.events.engine_events import MoveResolved
+from game.events.engine_events import GameEnded, MoveResolved
 from game.model.constants import PIECE_VALUES
-from game.model.pieces import get_color, get_type
+from game.model.pieces import get_color, get_type, is_king
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
 
@@ -37,6 +37,7 @@ class GameEngine:
         self.arbiter = RealTimeArbiter(event_bus=self.event_bus)
         self._white_score = 0
         self._black_score = 0
+        self._pending_game_end: tuple[str, str] | None = None  # (winner, loser)
 
         self.event_bus.subscribe(MoveResolved, self._on_move_resolved)
 
@@ -156,7 +157,7 @@ class GameEngine:
         )
 
         if game_over:
-            self.game_over = True
+            self._transition_to_game_over()
 
     def update_game_state(self):
         """Resolve all actions at the current clock value."""
@@ -168,7 +169,14 @@ class GameEngine:
         )
 
         if game_over:
-            self.game_over = True
+            self._transition_to_game_over()
+
+    def _transition_to_game_over(self) -> None:
+        """Set game_over flag and publish GameEnded exactly once."""
+        self.game_over = True
+        if self._pending_game_end:
+            winner, loser = self._pending_game_end
+            self.event_bus.publish(GameEnded(winner=winner, loser=loser))
 
     @property
     def white_score(self):
@@ -181,18 +189,25 @@ class GameEngine:
         return self._black_score
 
     def _on_move_resolved(self, event: MoveResolved) -> None:
-        """Update score when a capture is resolved."""
+        """Update score and detect king capture for game-end tracking."""
         if not event.captured_piece:
             return
 
         captured_type = get_type(event.captured_piece)
         captured_color = get_color(event.captured_piece)
+
+        # Track king capture for GameEnded event (published later by _transition_to_game_over)
+        if is_king(event.captured_piece):
+            loser = captured_color
+            winner = "w" if loser == "b" else "b"
+            self._pending_game_end = (winner, loser)
+            return  # King has value 0, no score update needed
+
         value = PIECE_VALUES.get(captured_type, 0)
 
         if value == 0:
             return
 
-        # The capturer's color is the opposite of the captured piece's color.
         if captured_color == "b":
             self._white_score += value
         else:

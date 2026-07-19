@@ -39,3 +39,20 @@ class MoveResolved:
     final_col: int | None
     promoted_to: str | None
     captured_piece: str | None = None
+
+
+@dataclass(frozen=True)
+class GameEnded:
+    """
+    Published exactly once when a king is captured and the game ends.
+
+    Attributes
+    ----------
+    winner : str
+        Color of the winning side ("w" or "b").
+    loser : str
+        Color of the losing side ("w" or "b").
+    """
+
+    winner: str
+    loser: str
