@@ -56,3 +56,10 @@ class GameEnded:
 
     winner: str
     loser: str
+
+
+@dataclass(frozen=True)
+class GameStarted:
+    """Published once when the game application is ready and gameplay should begin."""
+
+    pass

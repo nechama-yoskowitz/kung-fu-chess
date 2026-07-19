@@ -15,13 +15,17 @@ class MouseInputAdapter:
     """
 
     def __init__(self, controller, game_over_provider=None,
-                 board_rect_provider=None, original_board_size_provider=None):
+                 board_rect_provider=None, original_board_size_provider=None,
+                 input_blocked_provider=None):
         self.controller = controller
         self.game_over_provider = game_over_provider
         # board_rect_provider returns (left, top, width, height) of the displayed board
         self.board_rect_provider = board_rect_provider
         # original_board_size_provider returns (width, height) of the original board image
         self.original_board_size_provider = original_board_size_provider
+        # input_blocked_provider returns True when gameplay input should be ignored
+        # (e.g. during game-start countdown)
+        self.input_blocked_provider = input_blocked_provider
 
     def register(self, window_name: str) -> None:
         """Register the mouse callback on the given OpenCV window."""
@@ -30,6 +34,9 @@ class MouseInputAdapter:
     def _on_mouse_event(self, event, x, y, flags, param) -> None:
         """OpenCV mouse callback handler."""
         if self.game_over_provider and self.game_over_provider():
+            return
+
+        if self.input_blocked_provider and self.input_blocked_provider():
             return
 
         if event not in (cv2.EVENT_LBUTTONDOWN, cv2.EVENT_RBUTTONDOWN):

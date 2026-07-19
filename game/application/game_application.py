@@ -4,9 +4,12 @@ Composition root that wires all game subsystems together.
 
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
+from game.events.engine_events import GameStarted
 from game.graphics.frame_composer import FrameComposer
+from game.graphics.game_end_animation import GameEndAnimation
 from game.graphics.game_loop import GameLoop
 from game.graphics.game_screen_composer import GameScreenComposer
+from game.graphics.game_start_animation import GameStartAnimation
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.graphics.mouse_input_adapter import MouseInputAdapter
@@ -15,6 +18,8 @@ from game.graphics.sprites.sprite_manager import SpriteManager
 from game.history.move_history_observer import MoveHistoryObserver
 from game.model.board_mapper import BoardMapper
 from game.model.constants import COOLDOWN_DURATION_MS
+from game.sound.sound_observer import SoundObserver
+from game.sound.sound_player import SoundPlayer
 
 
 STARTING_BOARD = [
@@ -30,6 +35,7 @@ STARTING_BOARD = [
 
 BOARD_IMAGE_PATH = "game/graphics/assets/board.png"
 PIECES_ROOT_PATH = "game/graphics/assets/pieces"
+SOUNDS_ROOT_PATH = "game/graphics/assets/sounds"
 PIECE_SCALE = 0.70
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -53,6 +59,12 @@ class GameApplication:
         self.move_history = MoveHistoryObserver(
             event_bus=self.engine.event_bus,
             clock_provider=lambda: self.engine.clock,
+        )
+
+        self.sound_player = SoundPlayer(SOUNDS_ROOT_PATH)
+        self.sound_observer = SoundObserver(
+            event_bus=self.engine.event_bus,
+            sound_player=self.sound_player,
         )
 
         self.rows = len(self.engine.board)
@@ -86,6 +98,14 @@ class GameApplication:
             ),
         )
 
+        self.game_end_animation = GameEndAnimation(
+            event_bus=self.engine.event_bus,
+        )
+
+        self.game_start_animation = GameStartAnimation(
+            event_bus=self.engine.event_bus,
+        )
+
         self.frame_composer = FrameComposer(
             renderer=self.renderer,
             graphics_manager=self.graphics_manager,
@@ -97,7 +117,8 @@ class GameApplication:
                 COOLDOWN_DURATION_MS,
             ),
             selection_provider=lambda: self.controller.selected,
-            game_over_provider=lambda: self.engine.game_over,
+            game_end_animation=self.game_end_animation,
+            game_start_animation=self.game_start_animation,
         )
 
         self.screen_composer = GameScreenComposer(
@@ -115,6 +136,7 @@ class GameApplication:
             game_over_provider=lambda: self.engine.game_over,
             board_rect_provider=self._get_board_rect,
             original_board_size_provider=self._get_original_board_size,
+            input_blocked_provider=lambda: self.game_start_animation.active,
         )
 
     def _get_board_rect(self):
@@ -136,6 +158,12 @@ class GameApplication:
             engine_updater=lambda dt: self.engine.handle_wait(dt),
             mouse_input_adapter=self.mouse_input_adapter,
             screen_composer=self.screen_composer,
+            game_end_animation=self.game_end_animation,
+            game_start_animation=self.game_start_animation,
             target_fps=60,
         )
+
+        # Publish GameStarted after all subsystems are wired but before the loop runs.
+        self.engine.event_bus.publish(GameStarted())
+
         game_loop.run()

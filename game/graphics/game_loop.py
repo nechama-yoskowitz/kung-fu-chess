@@ -36,6 +36,8 @@ class GameLoop:
         engine_updater=None,
         mouse_input_adapter: MouseInputAdapter | None = None,
         screen_composer: GameScreenComposer | None = None,
+        game_end_animation=None,
+        game_start_animation=None,
         target_fps: int = 60,
         window_name: str = "Kung-Fu Chess",
     ):
@@ -51,6 +53,8 @@ class GameLoop:
         self.engine_updater = engine_updater
         self.mouse_input_adapter = mouse_input_adapter
         self.screen_composer = screen_composer
+        self.game_end_animation = game_end_animation
+        self.game_start_animation = game_start_animation
         self.target_fps = target_fps
         self.window_name = window_name
         self.running = False
@@ -129,3 +133,9 @@ class GameLoop:
                 self.synchronizer.sync_jumps(self.active_jumps_provider())
 
         self.graphics_manager.update(delta_time_ms)
+
+        if self.game_end_animation:
+            self.game_end_animation.update(delta_time_ms)
+
+        if self.game_start_animation:
+            self.game_start_animation.update(delta_time_ms)

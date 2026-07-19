@@ -259,3 +259,67 @@ class Renderer:
             color=color,
             thickness=thickness,
         )
+
+    def draw_centered_text_offset(
+    self,
+    text: str,
+    y_offset: int = 0,
+    font_size: float = 1.2,
+    color: tuple = (255, 255, 255),
+    thickness: int = 2,
+    ) -> None:
+        """
+        Draw text centered horizontally, offset vertically from center.
+
+        Parameters
+        ----------
+        text : str
+            The text to display.
+        y_offset : int
+            Pixels below the vertical center.
+        font_size : float
+            Font scale.
+        color : tuple
+            BGR color.
+        thickness : int
+            Text thickness.
+        """
+        if self.canvas is None:
+            raise RuntimeError(
+                "start_frame() must be called before drawing"
+            )
+
+        import cv2
+        h, w = self.canvas.img.shape[:2]
+        text_size, _ = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, font_size, thickness
+        )
+        text_w, text_h = text_size
+
+        x = (w - text_w) // 2
+        y = (h + text_h) // 2 + y_offset
+
+        cv2.putText(self.canvas.img, text, (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_size,
+                    color, thickness, cv2.LINE_AA)
+
+    def draw_start_countdown(self, text: str) -> None:
+        """
+        Draw large centered countdown text (e.g. '3', '2', '1', 'GO!').
+
+        Parameters
+        ----------
+        text : str
+            The countdown text to display.
+        """
+        if self.canvas is None:
+            raise RuntimeError(
+                "start_frame() must be called before drawing"
+            )
+
+        self.canvas.put_centered_text(
+            txt=text,
+            font_size=3.0,
+            color=(255, 255, 255),
+            thickness=4,
+        )
