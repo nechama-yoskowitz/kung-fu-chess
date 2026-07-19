@@ -3,6 +3,7 @@ Composition root that wires all game subsystems together.
 """
 
 from game.controller.controller import Controller
+from game.controller.local_game_gateway import LocalGameGateway
 from game.engine.game_engine import GameEngine
 from game.events.engine_events import GameStarted
 from game.graphics.frame_composer import FrameComposer
@@ -90,8 +91,10 @@ class GameApplication:
         )
         self.synchronizer.initialize(self.engine.board)
 
+        self.gateway = LocalGameGateway(self.engine)
+
         self.controller = Controller(
-            engine=self.engine,
+            gateway=self.gateway,
             board_mapper=BoardMapper(
                 cell_width=cell_width,
                 cell_height=cell_height,
