@@ -208,10 +208,10 @@ def test_tiebreak_by_sequence_id():
 def test_jump_active_before_expiration_blocks_enemy(capsys):
     board = make_board(["wR bR . ."])
     commands = [
-        "jump 0 0",          # wR jumps, expires_at=1000
+        "jump 0 0",          # wR jumps, expires_at=3500
         "click 100 0",       # select bR
         "click 0 0",         # bR → col 0, arrive=1000
-        "wait 1000",         # jump still active at t=1000 → airborne capture
+        "wait 1000",         # bR arrives, wR airborne → bR destroyed
         "print board",
     ]
     process_commands(board, commands)

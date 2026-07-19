@@ -1042,37 +1042,37 @@ def test_jump_lands_same_square(capsys):
 
 
 def test_airborne_piece_captures_arriving_enemy(capsys):
-    """An airborne piece destroys an arriving enemy — the enemy is removed."""
+    """A moving piece is destroyed by an airborne enemy — the mover is captured."""
     board = make_board(["wR bR . ."])
     commands = [
-        "jump 50 50",     # wR jumps at t=0, expires_at=1000
+        "jump 50 50",     # wR jumps at t=0, expires_at=3500
         "click 150 50",   # select bR (col=1)
         "click 50 50",    # bR → col=0, arrive_at=1000
-        "wait 1000",      # clock=1000: jump still active (expires_at not < clock), bR arrives
+        "wait 1000",      # clock=1000: bR arrives, wR is airborne → bR destroyed
         "print board",
     ]
     process_commands(board, commands)
     output = capsys.readouterr().out.strip()
-    # wR is airborne at (0,0); bR arrives at (0,0) → bR destroyed.
+    # wR is airborne at (0,0); bR arrives → bR is destroyed by the airborne wR.
     assert output == "wR . . ."
 
 
 def test_jump_too_late_does_not_save_piece(capsys):
     """If a piece jumps AFTER an enemy move is already on its way and
-    the jump is still active when the enemy arrives, the airborne piece
-    destroys the arriving enemy."""
+    the jump is still active when the enemy arrives, the arriving enemy
+    is destroyed by the airborne piece."""
     board = make_board(["wR bR . ."])
     commands = [
         "click 150 50",   # select bR (col=1)
         "click 50 50",    # bR → col=0, arrive_at=1000
         "wait 500",       # clock=500
-        "jump 50 50",     # wR jumps at t=500, expires_at=1500
-        "wait 500",       # clock=1000: bR arrives, jump (expires 1500) still active → airborne capture
+        "jump 50 50",     # wR jumps at t=500, expires_at=4000
+        "wait 500",       # clock=1000: bR arrives, wR still airborne → bR destroyed
         "print board",
     ]
     process_commands(board, commands)
     output = capsys.readouterr().out.strip()
-    # bR arrived at t=1000. At t=1000 wR's jump (expires 1500) is still active → airborne capture!
+    # bR arrived at t=1000. wR's jump still active → bR destroyed by airborne wR.
     assert output == "wR . . ."
 
 

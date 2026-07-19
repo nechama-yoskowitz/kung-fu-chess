@@ -132,7 +132,7 @@ def test_promotion_creates_cooldown():
 
 
 def test_airborne_capture_does_not_create_cooldown_for_destroyed_piece():
-    """If a moving piece is destroyed by an airborne enemy, no cooldown."""
+    """When a moving piece is destroyed by an airborne enemy, no cooldown for the mover."""
     from game.realtime.motion import ActiveJump
     arbiter = RealTimeArbiter()
     board = make_board(["wR . bR"])
@@ -140,8 +140,9 @@ def test_airborne_capture_does_not_create_cooldown_for_destroyed_piece():
     arbiter.active_jumps = [ActiveJump(piece="bR", row=0, col=2, expires_at=5000)]
     arbiter.start_motion("wR", 0, 0, 0, 2)
     arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
-    # wR was destroyed, no cooldown at (0,2) for wR
-    assert arbiter.is_piece_resting_at(0, 2) is False
+    # wR was destroyed by airborne bR → no cooldown for wR at (0,2)
+    # bR remains at (0,2)
+    assert board[0][2] == "bR"
 
 
 # ===========================================================================

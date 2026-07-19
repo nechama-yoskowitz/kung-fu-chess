@@ -199,8 +199,16 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 move_final_cell[seq_id] = target
 
         elif occupant.get("airborne") and get_color(occupant["piece"]) != get_color(event.piece):
-            # Airborne ENEMY — arriving piece is destroyed
+            # Airborne ENEMY — the airborne piece is protected; the arriving piece is destroyed.
+            # The arriving piece is the captured victim.
+            captured_piece = event.piece  # The mover is the one being captured
+
+            if is_king(captured_piece):
+                game_over = True
+                game_over_time = event.event_time
+
             move_status[seq_id] = "captured"
+            move_captured_piece[seq_id] = captured_piece
 
         elif occupant.get("airborne") and get_color(occupant["piece"]) == get_color(event.piece):
             # Airborne FRIENDLY — treat as empty (airborne piece is "in the air")
@@ -300,7 +308,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 "final_row": None,
                 "final_col": None,
                 "promoted_to": None,
-                "captured_piece": None,
+                "captured_piece": move_captured_piece.get(move.sequence_id),
             })
 
     # Build remaining pending_moves (only ACTIVE ones)
