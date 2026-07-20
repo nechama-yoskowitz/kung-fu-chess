@@ -124,6 +124,7 @@ class NetworkGameApplication:
             black_score_provider=lambda: self.state.black_score,
             white_moves_provider=lambda: self.move_history.white_moves,
             black_moves_provider=lambda: self.move_history.black_moves,
+            player_identity_provider=lambda: self.state.player_identity_text,
         )
 
         self.mouse_input_adapter = MouseInputAdapter(
@@ -154,6 +155,11 @@ class NetworkGameApplication:
             print(f"Failed to connect: {error}")
             self.transport.stop()
             return
+
+        # Print friendly shell confirmation
+        if self.state.player_identity_text:
+            color_name = "White" if self.state.player_color == "w" else "Black"
+            print(f"Logged in as '{self.state.player_username}' - you are {color_name}.")
 
         game_loop = GameLoop(
             frame_composer=self.frame_composer,

@@ -3,7 +3,8 @@ Full-window layout composer with side panels, board placement, and score display
 
 Layout:
 +----------------+--------------------------+----------------+
-| BLACK          |                          | WHITE          |
+| BLACK          | [Player Identity Header] | WHITE          |
+|                +--------------------------+                |
 | Score: X       |          BOARD           | Score: Y       |
 |                |                          |                |
 | Time | Move    |                          | Time | Move    |
@@ -20,37 +21,48 @@ from game.graphics.img import Img
 # Layout constants
 PANEL_WIDTH_RATIO = 0.18  # Each panel takes 18% of window width
 MIN_BOARD_SIZE = 200
+HEADER_HEIGHT = 36  # Dedicated header strip above the board
 PANEL_BG_COLOR = (40, 40, 40)  # Dark gray
 SCREEN_BG_COLOR = (30, 30, 30)  # Darker gray
+HEADER_BG_COLOR = (35, 35, 35)  # Slightly different from screen bg
 PANEL_BORDER_COLOR = (80, 80, 80)
 TEXT_COLOR = (220, 220, 220)
 HEADER_COLOR = (255, 255, 255)
+IDENTITY_COLOR = (200, 220, 255)  # Light blue-white for player name
 SCORE_COLOR = (0, 200, 255)  # Orange-yellow
 
 
 class LayoutMetrics:
     """Computed layout positions for the current window size."""
 
-    def __init__(self, window_width, window_height):
+    def __init__(self, window_width, window_height, has_identity=False):
         self.window_width = window_width
         self.window_height = window_height
 
         panel_width = max(120, int(window_width * PANEL_WIDTH_RATIO))
         self.panel_width = panel_width
 
+        # Reserve header height when identity is present
+        self.header_height = HEADER_HEIGHT if has_identity else 0
+
         # Board area is between the two panels
         available_width = window_width - 2 * panel_width
-        available_height = window_height
+        available_height = window_height - self.header_height
 
         # Board must be square and fit in the available area
         board_size = max(MIN_BOARD_SIZE, min(available_width, available_height))
         self.board_size = board_size
 
-        # Center the board vertically and horizontally in its area
+        # Center the board horizontally in its area, place below header vertically
         self.board_left = panel_width + (available_width - board_size) // 2
-        self.board_top = (window_height - board_size) // 2
+        self.board_top = self.header_height + (available_height - board_size) // 2
         self.board_right = self.board_left + board_size
         self.board_bottom = self.board_top + board_size
+
+        # Header area spans between panels, above the board
+        self.header_left = panel_width
+        self.header_top = 0
+        self.header_right = window_width - panel_width
 
         self.left_panel_x = 0
         self.right_panel_x = window_width - panel_width
@@ -72,6 +84,7 @@ class GameScreenComposer:
         black_score_provider=None,
         white_moves_provider=None,
         black_moves_provider=None,
+        player_identity_provider=None,
     ):
         self.frame_composer = frame_composer
         self.window_width = window_width
@@ -80,7 +93,11 @@ class GameScreenComposer:
         self.black_score_provider = black_score_provider
         self.white_moves_provider = white_moves_provider
         self.black_moves_provider = black_moves_provider
-        self._metrics = LayoutMetrics(window_width, window_height)
+        self.player_identity_provider = player_identity_provider
+        self._metrics = LayoutMetrics(
+            window_width, window_height,
+            has_identity=player_identity_provider is not None,
+        )
 
     @property
     def metrics(self) -> LayoutMetrics:
@@ -91,7 +108,10 @@ class GameScreenComposer:
         if width != self.window_width or height != self.window_height:
             self.window_width = width
             self.window_height = height
-            self._metrics = LayoutMetrics(width, height)
+            self._metrics = LayoutMetrics(
+                width, height,
+                has_identity=self.player_identity_provider is not None,
+            )
 
     def compose(self) -> Img:
         """Compose the full game screen and return it as an Img."""
@@ -110,6 +130,10 @@ class GameScreenComposer:
         self._draw_panel(screen, m.right_panel_x, m.panel_width, m.window_height, "WHITE",
                          self.white_score_provider, self.white_moves_provider)
 
+        # Draw player identity header (above the board, between panels)
+        if self.player_identity_provider and m.header_height > 0:
+            self._draw_identity_header(screen, m)
+
         # Render the board via FrameComposer
         board_canvas = self.frame_composer.compose()
 
@@ -127,6 +151,37 @@ class GameScreenComposer:
         screen.img[m.board_top:m.board_bottom, m.board_left:m.board_right] = board_img
 
         return screen
+
+    def _draw_identity_header(self, screen: Img, m: LayoutMetrics) -> None:
+        """Draw the player identity in a dedicated header area above the board."""
+        identity = self.player_identity_provider()
+        if not identity:
+            return
+
+        # Fill header background
+        header_width = m.header_right - m.header_left
+        screen.img[
+            m.header_top:m.header_top + m.header_height,
+            m.header_left:m.header_right,
+        ] = HEADER_BG_COLOR
+
+        # Draw text centered vertically in the header, left-padded
+        pad_left = 12
+        font_scale = 0.7
+        thickness = 2
+        text_size, _ = cv2.getTextSize(
+            identity, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+        )
+        text_h = text_size[1]
+        text_y = m.header_top + (m.header_height + text_h) // 2
+        text_x = m.header_left + pad_left
+
+        cv2.putText(
+            screen.img, identity,
+            (text_x, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+            IDENTITY_COLOR, thickness, cv2.LINE_AA,
+        )
 
     def _draw_panel(self, screen: Img, x: int, width: int, height: int,
                     title: str, score_provider, moves_provider):

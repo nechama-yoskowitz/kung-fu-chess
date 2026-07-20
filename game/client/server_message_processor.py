@@ -80,8 +80,9 @@ class ServerMessageProcessor:
 
     def _on_login_success(self, payload: dict) -> None:
         color = payload.get("color")
+        username = payload.get("username", "")
         if color:
-            self._state.apply_player_assigned(color)
+            self._state.apply_login_success(color, username)
 
     def _on_game_state(self, payload: dict) -> None:
         board = payload.get("board", [])

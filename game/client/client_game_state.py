@@ -25,12 +25,27 @@ class ClientGameState:
         self.black_score: int = 0
         self.game_over: bool = False
         self.player_color: str | None = None
+        self.player_username: str | None = None
         self.connected: bool = False
 
     def apply_player_assigned(self, color: str) -> None:
         """Update from a player_assigned message."""
         self.player_color = color
         self.connected = True
+
+    def apply_login_success(self, color: str, username: str) -> None:
+        """Update from a login_success message."""
+        self.player_color = color
+        self.player_username = username
+        self.connected = True
+
+    @property
+    def player_identity_text(self) -> str | None:
+        """Formatted identity string for display, or None if not logged in."""
+        if self.player_username is None or self.player_color is None:
+            return None
+        color_name = "White" if self.player_color == "w" else "Black"
+        return f"{self.player_username} | {color_name}"
 
     def apply_game_state(self, board: list[list[str]], clock: float,
                          white_score: int, black_score: int,
