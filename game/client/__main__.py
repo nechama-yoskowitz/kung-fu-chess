@@ -2,6 +2,7 @@
 Entry point: python -m game.client
 
 Connects to the local WebSocket server and provides an interactive console.
+Prompts for a username before joining the game.
 """
 
 import asyncio

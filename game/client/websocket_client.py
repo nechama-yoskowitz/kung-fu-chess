@@ -1,22 +1,78 @@
 """
 Minimal console WebSocket client for Kung-Fu Chess.
 
-Connects to the server, sends user input, and prints responses.
+Connects to the server, performs login, then enters interactive play.
 """
 
 import asyncio
+import json
 
 import websockets
+
+from game.server.protocol import decode_message, make_login_request
 
 DEFAULT_URI = "ws://localhost:8765"
 
 
-async def run_client(uri: str = DEFAULT_URI) -> None:
-    """Connect to the server and enter an interactive send/receive loop."""
+def prompt_username() -> str:
+    """Ask the user for a username. Rejects empty/whitespace-only input."""
+    while True:
+        username = input("Enter your username: ")
+        if username.strip():
+            return username.strip()
+        print("Username cannot be empty. Please try again.")
+
+
+async def run_client(uri: str = DEFAULT_URI, username: str | None = None) -> None:
+    """
+    Connect to the server, login with a username, and enter interactive mode.
+
+    Parameters
+    ----------
+    uri : str
+        WebSocket server URI.
+    username : str | None
+        If provided, skip the interactive prompt (useful for testing/scripting).
+    """
+    if username is None:
+        username = prompt_username()
+
     try:
         async with websockets.connect(uri) as ws:
             print(f"Connected to {uri}")
-            print("Type messages to send. Type 'quit' to exit.\n")
+
+            # Send login request
+            await ws.send(make_login_request(username))
+            response_raw = await ws.recv()
+            response = decode_message(response_raw)
+
+            if response is None:
+                print(f"Unexpected server response: {response_raw}")
+                return
+
+            if response["type"] == "error":
+                code = response["payload"].get("code", "")
+                message = response["payload"].get("message", "")
+                print(f"Login failed: {message} ({code})")
+                return
+
+            if response["type"] == "login_success":
+                color = response["payload"]["color"]
+                color_name = "White" if color == "w" else "Black"
+                print(f"Logged in as '{username}' — you are {color_name}.")
+            else:
+                print(f"Unexpected response: {response_raw}")
+                return
+
+            # Receive game_state
+            state_raw = await ws.recv()
+            state_msg = decode_message(state_raw)
+            if state_msg and state_msg["type"] == "game_state":
+                print("Game state received. Ready to play!")
+            else:
+                print(f"< {state_raw}")
+
+            print("Type commands to send. Type 'quit' to exit.\n")
 
             while True:
                 message = await asyncio.get_event_loop().run_in_executor(
@@ -28,8 +84,8 @@ async def run_client(uri: str = DEFAULT_URI) -> None:
                     break
 
                 await ws.send(message)
-                response = await ws.recv()
-                print(f"< {response}")
+                resp = await ws.recv()
+                print(f"< {resp}")
 
     except (ConnectionRefusedError, OSError) as e:
         print(f"Error: Could not connect to server at {uri}")

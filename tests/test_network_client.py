@@ -226,9 +226,10 @@ class TestTransportWithServer:
     """Integration: transport receives messages from a real server."""
 
     def test_receives_player_assigned_and_game_state(self):
-        """Start a real server, connect transport, receive initial messages."""
+        """Start a real server, connect transport, send login, receive messages."""
         import asyncio
         from game.server.websocket_server import GameWebSocketServer
+        from game.server.protocol import make_login_request
 
         server_ready = threading.Event()
         server_port = [0]
@@ -248,26 +249,26 @@ class TestTransportWithServer:
         server_thread.start()
         server_ready.wait(timeout=5)
 
-        # Connect transport
+        # Connect transport and queue a login message
         outgoing = queue.Queue()
         incoming = queue.Queue()
         uri = f"ws://localhost:{server_port[0]}"
+        outgoing.put_nowait(make_login_request("TestPlayer"))
         transport = NetworkTransport(uri, outgoing, incoming)
         transport.start()
 
         # Wait for messages to arrive
+        messages = []
         for _ in range(40):  # up to 4 seconds
             time.sleep(0.1)
-            messages = transport.drain_incoming()
-            if messages:
+            messages.extend(transport.drain_incoming())
+            if len(messages) >= 2:
                 break
-        if not messages:
-            messages = transport.drain_incoming()
         transport.stop(timeout=3.0)
 
-        # Should have received player_assigned + game_state
+        # Should have received login_success + game_state
         types = [m.get("type") for m in messages]
-        assert "player_assigned" in types
+        assert "login_success" in types
         assert "game_state" in types
 
     def test_game_state_can_update_client_state(self):

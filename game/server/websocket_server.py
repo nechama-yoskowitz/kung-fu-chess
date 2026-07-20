@@ -51,21 +51,18 @@ class GameWebSocketServer:
         remote = websocket.remote_address
         logger.info(f"Client connected: {remote}")
 
-        # Send initial messages (player_assigned + game_state, or game_full error).
-        initial_messages = self.session.add_client(websocket)
-        for msg in initial_messages:
-            await websocket.send(msg)
-
-        # If the client was rejected (game_full), close immediately.
-        if websocket not in self.session._clients:
-            await websocket.close()
-            return
+        # Register connection. No color assigned yet — client must send login_request.
+        self.session.add_client(websocket)
 
         try:
             async for message in websocket:
                 response = await self.session.handle_message(message, sender=websocket)
                 if response is not None:
-                    await websocket.send(response)
+                    if isinstance(response, list):
+                        for msg in response:
+                            await websocket.send(msg)
+                    else:
+                        await websocket.send(response)
                 # Drain any queued broadcasts from engine events or accepted moves.
                 await self.session.drain_outbox()
         except websockets.ConnectionClosed:

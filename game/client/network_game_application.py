@@ -44,8 +44,9 @@ class NetworkGameApplication:
     Connects to a server, receives authoritative state, renders the game.
     """
 
-    def __init__(self, server_uri: str):
+    def __init__(self, server_uri: str, username: str = "Player"):
         self._server_uri = server_uri
+        self._username = username
         self._running = True
 
         # Client-side event bus for sound/animation observers
@@ -136,6 +137,10 @@ class NetworkGameApplication:
     def run(self):
         """Connect to server and run the graphical game loop."""
         self.transport.start()
+
+        # Send login request as the first outgoing message
+        from game.server.protocol import make_login_request
+        self._outgoing.put_nowait(make_login_request(self._username))
 
         # Wait briefly for initial connection
         deadline = time.monotonic() + 5.0

@@ -26,8 +26,15 @@ def main():
             print("Expected format: ws://host:port")
             sys.exit(1)
 
+        # Prompt for username
+        while True:
+            username = input("Enter your username: ")
+            if username.strip():
+                break
+            print("Username cannot be empty. Please try again.")
+
         from game.client.network_game_application import NetworkGameApplication
-        app = NetworkGameApplication(server_uri=args.server)
+        app = NetworkGameApplication(server_uri=args.server, username=username.strip())
         app.run()
     else:
         # Local mode (unchanged)

@@ -52,6 +52,7 @@ class ServerMessageProcessor:
 
         handler = {
             "player_assigned": self._on_player_assigned,
+            "login_success": self._on_login_success,
             "game_state": self._on_game_state,
             "move_accepted": self._on_move_accepted,
             "move_rejected": self._on_move_rejected,
@@ -73,6 +74,11 @@ class ServerMessageProcessor:
             logger.warning(f"Unknown message type: {msg_type}")
 
     def _on_player_assigned(self, payload: dict) -> None:
+        color = payload.get("color")
+        if color:
+            self._state.apply_player_assigned(color)
+
+    def _on_login_success(self, payload: dict) -> None:
         color = payload.get("color")
         if color:
             self._state.apply_player_assigned(color)

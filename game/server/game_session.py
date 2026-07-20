@@ -23,11 +23,13 @@ from game.server.protocol import (
     make_game_state,
     make_jump_accepted,
     make_jump_rejected,
+    make_login_success,
     make_move_accepted,
     make_move_rejected,
     make_move_resolved,
     make_pong,
     validate_jump_request,
+    validate_login_request,
     validate_move_request,
 )
 
@@ -50,7 +52,10 @@ MAX_PLAYERS = 2
 
 class GameSession:
     """
-    Manages one active game with player assignment and ownership validation.
+    Manages one active game with login, player assignment, and ownership validation.
+
+    A client must send a login_request before being assigned a color or allowed
+    to send move/jump requests.
     """
 
     def __init__(self, board=None):
@@ -58,6 +63,7 @@ class GameSession:
         self.engine = GameEngine(self._board)
         self._clients: set = set()
         self._player_colors: dict = {}  # websocket → "w" | "b"
+        self._player_usernames: dict = {}  # websocket → username
         self._tick_task: asyncio.Task | None = None
         # Queue for messages produced by synchronous EventBus callbacks.
         self._outbox: deque[str] = deque()
@@ -67,38 +73,64 @@ class GameSession:
 
     # ─── Client management ────────────────────────────────────────────────
 
-    def add_client(self, websocket) -> list[str]:
+    def add_client(self, websocket) -> None:
         """
-        Register a client. Assign a player color if a slot is available.
+        Register a WebSocket connection. Does NOT assign a color yet.
 
-        Returns a list of messages to send to this client (in order):
-        - player_assigned (if assigned a color)
-        - game_state
-        Or an error if the game is full.
+        The client must send a login_request to be assigned a color and
+        receive the game state.
+        """
+        self._clients.add(websocket)
+
+    def login_client(self, websocket, username: str) -> list[str]:
+        """
+        Attempt to log in a connected client with the given username.
+
+        Returns a list of messages to send to this client:
+        - On success: login_success + game_state
+        - On failure: error message (username_taken or game_full)
         """
         messages = []
+
+        # Already logged in — ignore duplicate login
+        if websocket in self._player_colors:
+            messages.append(make_error("already logged in", "already_logged_in"))
+            return messages
+
+        # Duplicate username check
+        active_usernames = set(self._player_usernames.values())
+        if username in active_usernames:
+            messages.append(make_error(
+                f"username '{username}' is already taken", "username_taken"
+            ))
+            return messages
 
         # Assign color
         color = self._assign_color(websocket)
         if color is None:
-            # Game is full — reject
             messages.append(make_error("game is full", "game_full"))
             return messages
 
-        self._clients.add(websocket)
-        messages.append(encode_message("player_assigned", {"color": color}))
+        self._player_usernames[websocket] = username
+        messages.append(make_login_success(username=username, color=color))
         messages.append(self._make_game_state())
         return messages
 
     def remove_client(self, websocket) -> None:
-        """Unregister a client and free their color."""
+        """Unregister a client and free their color and username."""
         self._clients.discard(websocket)
         if websocket in self._player_colors:
             del self._player_colors[websocket]
+        if websocket in self._player_usernames:
+            del self._player_usernames[websocket]
 
     def is_full(self) -> bool:
         """True if both player slots are taken."""
         return len(self._player_colors) >= MAX_PLAYERS
+
+    def is_logged_in(self, websocket) -> bool:
+        """True if the client has completed the login handshake."""
+        return websocket in self._player_colors
 
     @property
     def client_count(self) -> int:
@@ -108,12 +140,16 @@ class GameSession:
         """Return the assigned color for a client, or None."""
         return self._player_colors.get(websocket)
 
+    def get_player_username(self, websocket) -> str | None:
+        """Return the username for a client, or None."""
+        return self._player_usernames.get(websocket)
+
     # ─── Message handling ─────────────────────────────────────────────────
 
-    async def handle_message(self, raw: str, sender) -> str | None:
+    async def handle_message(self, raw: str, sender) -> str | list[str] | None:
         """
-        Process a protocol message. Returns a direct response to the sender,
-        or None if only broadcasts were queued.
+        Process a protocol message. Returns a direct response to the sender
+        (str or list of str), or None if only broadcasts were queued.
 
         After calling this, the caller must call drain_outbox() to send
         any queued broadcast messages.
@@ -134,6 +170,13 @@ class GameSession:
 
         if msg_type == "ping":
             return make_pong()
+
+        if msg_type == "login_request":
+            return self._handle_login_request(payload, sender)
+
+        # All gameplay messages require login
+        if not self.is_logged_in(sender):
+            return make_error("must login first", "not_logged_in")
 
         if msg_type == "move_request":
             return self._handle_move_request(payload, sender)
@@ -187,6 +230,23 @@ class GameSession:
             self._player_colors[websocket] = "b"
             return "b"
         return None
+
+    def _handle_login_request(self, payload: dict, sender) -> str | list[str] | None:
+        """
+        Handle a login_request message. Validates username and assigns color.
+
+        Returns a list of messages to send to the sender (login_success + game_state),
+        or a single error message string.
+        """
+        error = validate_login_request(payload)
+        if error:
+            return make_error(error, "validation_error")
+
+        username = payload["username"].strip()
+        messages = self.login_client(sender, username)
+        if len(messages) == 1:
+            return messages[0]
+        return messages
 
     def _handle_move_request(self, payload: dict, sender) -> str:
         error = validate_move_request(payload)
@@ -305,14 +365,19 @@ class GameSession:
         if not self._clients:
             return
 
+        # Only broadcast to logged-in clients
+        logged_in = [c for c in self._clients if c in self._player_colors]
+        if not logged_in:
+            return
+
         results = await asyncio.gather(
-            *[client.send(message) for client in self._clients],
+            *[client.send(message) for client in logged_in],
             return_exceptions=True,
         )
 
         # Remove clients that failed
         failed = set()
-        for client, result in zip(self._clients, results):
+        for client, result in zip(logged_in, results):
             if isinstance(result, Exception):
                 failed.add(client)
 
@@ -320,6 +385,8 @@ class GameSession:
             self._clients.discard(client)
             if client in self._player_colors:
                 del self._player_colors[client]
+            if client in self._player_usernames:
+                del self._player_usernames[client]
 
     async def _tick_loop(self) -> None:
         while True:

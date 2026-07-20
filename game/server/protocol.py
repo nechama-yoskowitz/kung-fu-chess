@@ -61,15 +61,17 @@ def make_error(message: str, code: str = "protocol_error") -> str:
 
 # ─── Client → Server message types ────────────────────────────────────────────
 
+# login_request: client sends a username to join the game
 # move_request: client asks to move a piece
 # jump_request: client asks to jump a piece
 # ping: keepalive
 
-CLIENT_MESSAGE_TYPES = {"move_request", "jump_request", "ping"}
+CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request", "ping"}
 
 
 # ─── Server → Client message types ────────────────────────────────────────────
 
+# login_success: confirms login, includes assigned color and username
 # game_state: full board snapshot (sent on connect and periodically if needed)
 # move_accepted: confirms a move was started, includes timing data
 # move_rejected: explains why a move failed
@@ -81,13 +83,23 @@ CLIENT_MESSAGE_TYPES = {"move_request", "jump_request", "ping"}
 # error: protocol-level error
 
 SERVER_MESSAGE_TYPES = {
-    "game_state", "move_accepted", "move_rejected",
+    "login_success", "game_state", "move_accepted", "move_rejected",
     "move_resolved", "jump_accepted", "jump_rejected",
     "game_ended", "pong", "error",
 }
 
 
 # ─── Payload schemas ──────────────────────────────────────────────────────────
+
+
+def make_login_request(username: str) -> str:
+    """Client → Server: request login with a username."""
+    return encode_message("login_request", {"username": username})
+
+
+def make_login_success(username: str, color: str) -> str:
+    """Server → Client: login accepted, color assigned."""
+    return encode_message("login_success", {"username": username, "color": color})
 
 
 def make_move_request(from_row: int, from_col: int, to_row: int, to_col: int) -> str:
@@ -218,4 +230,16 @@ def validate_jump_request(payload: dict) -> str | None:
             return f"missing field: {field}"
         if not isinstance(payload[field], int):
             return f"field {field} must be an integer"
+    return None
+
+
+def validate_login_request(payload: dict) -> str | None:
+    """Return error message if payload is invalid, None if valid."""
+    if "username" not in payload:
+        return "missing field: username"
+    username = payload["username"]
+    if not isinstance(username, str):
+        return "username must be a string"
+    if not username.strip():
+        return "username must not be empty or whitespace-only"
     return None
