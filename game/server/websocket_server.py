@@ -15,8 +15,10 @@ from game.server.game_session import GameSession
 from game.server.protocol import (
     decode_message,
     make_error,
+    make_rating_updated,
     validate_login_request,
 )
+from game.server.rating.rating_service import RatingService
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +34,75 @@ class GameWebSocketServer:
 
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                  session: GameSession | None = None,
-                 user_service: UserService | None = None):
+                 user_service: UserService | None = None,
+                 rating_service: RatingService | None = None):
         self.host = host
         self.port = port
         self.session = session or GameSession()
         self.user_service = user_service
+        self.rating_service = rating_service
         self._server = None
+        # Game ID derived from the session's engine identity — unique per engine object.
+        # The current architecture supports one game per GameSession lifetime.
+        self._game_id = f"game-{id(self.session.engine)}"
+
+        # Subscribe to GameEnded for rating updates
+        if self.rating_service:
+            from game.events.engine_events import GameEnded
+            self.session.engine.event_bus.subscribe(
+                GameEnded, self._on_game_ended_for_rating
+            )
+
+    def _on_game_ended_for_rating(self, event) -> None:
+        """
+        React to GameEnded by computing and broadcasting rating updates.
+
+        This runs synchronously inside the engine's EventBus dispatch
+        (during tick), so we queue messages into the session outbox.
+        """
+        if self.rating_service is None:
+            return
+
+        # Map winner/loser colors to usernames
+        winner_username = None
+        loser_username = None
+
+        for ws, color in self.session._player_colors.items():
+            username = self.session._player_usernames.get(ws)
+            if color == event.winner:
+                winner_username = username
+            elif color == event.loser:
+                loser_username = username
+
+        if not winner_username or not loser_username:
+            logger.warning("Rating update skipped: could not resolve both player usernames")
+            return
+
+        result = self.rating_service.process_game_end(
+            game_id=self._game_id,
+            winner_username=winner_username,
+            loser_username=loser_username,
+        )
+
+        if result is None:
+            return
+
+        # Queue rating_updated messages for broadcast
+        winner_msg = make_rating_updated(
+            username=result.winner.username,
+            old_rating=result.winner.old_rating,
+            new_rating=result.winner.new_rating,
+            change=result.winner.change,
+        )
+        loser_msg = make_rating_updated(
+            username=result.loser.username,
+            old_rating=result.loser.old_rating,
+            new_rating=result.loser.new_rating,
+            change=result.loser.change,
+        )
+
+        self.session._queue_broadcast(winner_msg)
+        self.session._queue_broadcast(loser_msg)
 
     async def start(self) -> None:
         """Start the server and the game tick loop."""
@@ -140,10 +205,13 @@ class GameWebSocketServer:
 
 
 async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
-                     user_service: UserService | None = None) -> None:
+                     user_service: UserService | None = None,
+                     rating_service: RatingService | None = None) -> None:
     """Run the server until interrupted."""
     server = GameWebSocketServer(
-        host=host, port=port, user_service=user_service
+        host=host, port=port,
+        user_service=user_service,
+        rating_service=rating_service,
     )
     await server.start()
 

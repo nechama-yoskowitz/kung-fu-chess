@@ -4,7 +4,7 @@ Client-side game state model — stores authoritative state received from the se
 Only updated from decoded server messages. Does not contain engine logic.
 """
 
-from game.model.constants import EMPTY_CELL
+from game.model.constants import COOLDOWN_DURATION_MS, EMPTY_CELL
 
 
 def _empty_board(rows: int = 8, cols: int = 8) -> list[list[str]]:
@@ -28,6 +28,9 @@ class ClientGameState:
         self.player_username: str | None = None
         self.player_rating: int | None = None
         self.connected: bool = False
+        # Active cooldowns: list of (row, col, expires_at_ms)
+        self._active_cooldowns: list[tuple[int, int, float]] = []
+        self._local_clock: float = 0.0
 
     def apply_player_assigned(self, color: str) -> None:
         """Update from a player_assigned message."""
@@ -59,6 +62,11 @@ class ClientGameState:
         self.black_score = black_score
         self.game_over = game_over
 
+    def apply_rating_updated(self, username: str, new_rating: int) -> None:
+        """Update player_rating only if the username matches our own."""
+        if self.player_username is not None and username == self.player_username:
+            self.player_rating = new_rating
+
     def apply_move_resolved(
         self,
         from_row: int,
@@ -88,3 +96,37 @@ class ClientGameState:
             if 0 <= final_row < len(self.board) and 0 <= final_col < len(self.board[0]):
                 placed_piece = promoted_to if promoted_to else piece
                 self.board[final_row][final_col] = placed_piece
+                # Start a cooldown at the destination
+                self._active_cooldowns.append(
+                    (final_row, final_col, self._local_clock + COOLDOWN_DURATION_MS)
+                )
+
+    def advance_clock(self, delta_ms: float) -> None:
+        """Advance the local clock and expire old cooldowns."""
+        self._local_clock += delta_ms
+        self._active_cooldowns = [
+            (r, c, exp) for r, c, exp in self._active_cooldowns
+            if exp > self._local_clock
+        ]
+
+    def get_cooldown_indicators(self) -> list[tuple[int, int, float]]:
+        """
+        Return active cooldown indicators as (row, col, progress).
+
+        progress is 1.0 at cooldown start, 0.0 at expiry.
+        """
+        indicators = []
+        for r, c, expires_at in self._active_cooldowns:
+            remaining = expires_at - self._local_clock
+            if remaining <= 0:
+                continue
+            progress = min(remaining / COOLDOWN_DURATION_MS, 1.0)
+            indicators.append((r, c, progress))
+        return indicators
+
+    def is_piece_resting_at(self, row: int, col: int) -> bool:
+        """Return True if a cooldown is active at this cell."""
+        for r, c, exp in self._active_cooldowns:
+            if r == row and c == col and exp > self._local_clock:
+                return True
+        return False

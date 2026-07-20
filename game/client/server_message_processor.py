@@ -60,6 +60,7 @@ class ServerMessageProcessor:
             "jump_accepted": self._on_jump_accepted,
             "jump_rejected": self._on_jump_rejected,
             "game_ended": self._on_game_ended,
+            "rating_updated": self._on_rating_updated,
             "error": self._on_error,
             "pong": lambda p: None,
             "raw": lambda p: None,
@@ -138,7 +139,7 @@ class ServerMessageProcessor:
         gp = self._active_movements.pop(seq_id, None)
         source = self._move_sources.pop(seq_id, None)
 
-        # Update authoritative client board state
+        # Step 1: Update the authoritative client board state.
         if source is not None:
             from_row, from_col = source
             self._state.apply_move_resolved(
@@ -151,23 +152,28 @@ class ServerMessageProcessor:
                 promoted_to=promoted_to,
             )
 
-        # Update graphics
+        # Step 2: Update graphics to match the authoritative board.
         if outcome == "captured":
-            # The mover itself was captured (e.g. by an airborne piece) — remove it.
+            # The mover itself was captured — remove its GraphicPiece.
             if gp and gp in self._gm.graphic_pieces:
                 self._gm.remove_piece(gp)
         else:
-            # The mover arrived/stopped. If it captured a victim, remove the victim GP.
-            if captured_piece and final_row is not None and final_col is not None:
-                victim_gp = self._gm.get_piece_at(final_row, final_col)
-                if victim_gp is not None and victim_gp is not gp:
-                    self._gm.remove_piece(victim_gp)
-
-            # Snap the mover to its final position.
+            # The mover arrived/stopped — snap it to the final cell.
             if gp and final_row is not None and final_col is not None:
                 gp.finish_move_at(final_row, final_col)
                 if promoted_to:
                     gp.promote_to(promoted_to)
+
+        # Step 3: Reconcile the destination cell with the authoritative board.
+        # This removes any stale GraphicPieces (captured victims, duplicates)
+        # that remain at the destination regardless of how they got there.
+        if final_row is not None and final_col is not None:
+            self._reconcile_cell(final_row, final_col, survivor=gp if outcome != "captured" else None)
+
+        # Step 4: Reconcile the source cell (now empty on the board).
+        if source is not None:
+            from_row, from_col = source
+            self._reconcile_cell(from_row, from_col, survivor=None)
 
         # Publish MoveResolved for sound/history observers
         if self._event_bus:
@@ -180,6 +186,40 @@ class ServerMessageProcessor:
                 promoted_to=promoted_to,
                 captured_piece=captured_piece,
             ))
+
+    def _reconcile_cell(self, row: int, col: int, survivor=None) -> None:
+        """
+        Ensure graphics at (row, col) match the authoritative board.
+
+        Removes non-moving GraphicPieces that don't match the board token.
+        Preserves the `survivor` object (the known-correct mover) even if
+        it hasn't been fully snapped yet.
+        If survivor is present, all other stationary pieces at the cell are
+        removed regardless of token (prevents duplicates from race conditions).
+        """
+        board = self._state.board
+        if not (0 <= row < len(board) and 0 <= col < len(board[0])):
+            return
+
+        expected_piece = board[row][col]
+        to_remove = []
+
+        for gp in self._gm.get_pieces_at(row, col):
+            if gp is survivor:
+                continue
+            if gp.is_moving:
+                continue
+            # Stationary GP at this cell — remove if it doesn't belong.
+            if expected_piece == "." or gp.piece != expected_piece:
+                to_remove.append(gp)
+            elif survivor is not None:
+                # Board expects this token, but the survivor already represents it.
+                # This is a stale duplicate (the old occupant before the mover arrived).
+                to_remove.append(gp)
+
+        for gp in to_remove:
+            if gp in self._gm.graphic_pieces:
+                self._gm.remove_piece(gp)
 
     def _on_jump_accepted(self, payload: dict) -> None:
         row = payload.get("row")
@@ -202,6 +242,12 @@ class ServerMessageProcessor:
 
         if self._event_bus:
             self._event_bus.publish(GameEnded(winner=winner, loser=loser))
+
+    def _on_rating_updated(self, payload: dict) -> None:
+        username = payload.get("username")
+        new_rating = payload.get("new_rating")
+        if username and new_rating is not None:
+            self._state.apply_rating_updated(username, new_rating)
 
     def _on_error(self, payload: dict) -> None:
         code = payload.get("code", "")

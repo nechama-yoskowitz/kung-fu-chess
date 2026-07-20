@@ -44,10 +44,14 @@ def _make_gm_with_pieces(pieces_spec):
                 return g
         return None
 
+    def get_pieces_at(r, c):
+        return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+
     def remove_piece(g):
         gm.graphic_pieces.remove(g)
 
     gm.get_piece_at = MagicMock(side_effect=get_piece_at)
+    gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
     gm.remove_piece = MagicMock(side_effect=remove_piece)
 
     return gm, gp_map
@@ -376,3 +380,404 @@ class TestWhiteCapturesBlack:
         # Exactly one GP at destination
         at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 2]
         assert len(at_dest) == 1
+
+
+# ─── Race condition: animation finishes before move_resolved ──────────────────
+
+
+class TestAnimationFinishesBeforeMoveResolved:
+    """
+    The GraphicPiece animation timer completes BEFORE the server sends
+    move_resolved. Both the mover and victim end up at the same logical cell.
+    """
+
+    def test_mover_before_victim_in_list(self):
+        """Mover appears first in graphic_pieces — get_piece_at returns mover."""
+        state = ClientGameState()
+        state.board = [[".", "wP", ".", "."], [".", "bR", ".", "."]]
+
+        # Mover is FIRST in the list (animation already finished → row/col = dest)
+        mover_gp = MagicMock(spec=GraphicPiece)
+        mover_gp.piece = "bR"
+        mover_gp.row = 0
+        mover_gp.col = 1  # Already at destination (animation finished)
+        mover_gp.is_moving = False
+
+        victim_gp = MagicMock(spec=GraphicPiece)
+        victim_gp.piece = "wP"
+        victim_gp.row = 0
+        victim_gp.col = 1
+        victim_gp.is_moving = False
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [mover_gp, victim_gp]  # mover FIRST
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            mover_gp.row = r
+            mover_gp.col = c
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        mover_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[100] = mover_gp
+        proc._move_sources[100] = (1, 1)
+
+        proc._on_move_resolved({
+            "sequence_id": 100,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 1,
+            "promoted_to": None,
+            "captured_piece": "wP",
+        })
+
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 1]
+        assert len(at_dest) == 1
+        assert at_dest[0] is mover_gp
+        assert victim_gp not in gm.graphic_pieces
+
+    def test_victim_before_mover_in_list(self):
+        """Victim appears first in graphic_pieces — get_piece_at returns victim."""
+        state = ClientGameState()
+        state.board = [[".", "wP", ".", "."], [".", "bR", ".", "."]]
+
+        victim_gp = MagicMock(spec=GraphicPiece)
+        victim_gp.piece = "wP"
+        victim_gp.row = 0
+        victim_gp.col = 1
+        victim_gp.is_moving = False
+
+        # Mover already at destination (animation finished)
+        mover_gp = MagicMock(spec=GraphicPiece)
+        mover_gp.piece = "bR"
+        mover_gp.row = 0
+        mover_gp.col = 1
+        mover_gp.is_moving = False
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [victim_gp, mover_gp]  # victim FIRST
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            mover_gp.row = r
+            mover_gp.col = c
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        mover_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[101] = mover_gp
+        proc._move_sources[101] = (1, 1)
+
+        proc._on_move_resolved({
+            "sequence_id": 101,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 1,
+            "promoted_to": None,
+            "captured_piece": "wP",
+        })
+
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 1]
+        assert len(at_dest) == 1
+        assert at_dest[0] is mover_gp
+        assert victim_gp not in gm.graphic_pieces
+
+    def test_move_resolved_arrives_before_animation(self):
+        """Mover is still in-flight when move_resolved arrives (normal fast case)."""
+        state = ClientGameState()
+        state.board = [[".", "wP", "."], ["bR", ".", "."]]
+
+        victim_gp = MagicMock(spec=GraphicPiece)
+        victim_gp.piece = "wP"
+        victim_gp.row = 0
+        victim_gp.col = 1
+        victim_gp.is_moving = False
+
+        mover_gp = MagicMock(spec=GraphicPiece)
+        mover_gp.piece = "bR"
+        mover_gp.row = 1  # still at source
+        mover_gp.col = 0
+        mover_gp.is_moving = True
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [victim_gp, mover_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            mover_gp.row = r
+            mover_gp.col = c
+            mover_gp.is_moving = False
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        mover_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[102] = mover_gp
+        proc._move_sources[102] = (1, 0)
+
+        proc._on_move_resolved({
+            "sequence_id": 102,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 1,
+            "promoted_to": None,
+            "captured_piece": "wP",
+        })
+
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 1]
+        assert len(at_dest) == 1
+        assert at_dest[0] is mover_gp
+        assert victim_gp not in gm.graphic_pieces
+
+
+# ─── Duplicate tokens elsewhere on the board ──────────────────────────────────
+
+
+class TestDuplicateTokensElsewhere:
+    """Other pieces with the same token must not be affected by the capture."""
+
+    def test_other_piece_with_same_token_unaffected(self):
+        state = ClientGameState()
+        # Two white pawns: one at (0,0), one at (0,2). Black rook captures (0,2).
+        state.board = [["wP", ".", "wP", "."], [".", ".", "bR", "."]]
+
+        other_wp = MagicMock(spec=GraphicPiece)
+        other_wp.piece = "wP"
+        other_wp.row = 0
+        other_wp.col = 0
+        other_wp.is_moving = False
+
+        victim_wp = MagicMock(spec=GraphicPiece)
+        victim_wp.piece = "wP"
+        victim_wp.row = 0
+        victim_wp.col = 2
+        victim_wp.is_moving = False
+
+        mover_gp = MagicMock(spec=GraphicPiece)
+        mover_gp.piece = "bR"
+        mover_gp.row = 1
+        mover_gp.col = 2
+        mover_gp.is_moving = True
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [other_wp, victim_wp, mover_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            mover_gp.row = r
+            mover_gp.col = c
+            mover_gp.is_moving = False
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        mover_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[200] = mover_gp
+        proc._move_sources[200] = (1, 2)
+
+        proc._on_move_resolved({
+            "sequence_id": 200,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 2,
+            "promoted_to": None,
+            "captured_piece": "wP",
+        })
+
+        # Other wP at (0,0) must be unaffected
+        assert other_wp in gm.graphic_pieces
+        assert other_wp.row == 0 and other_wp.col == 0
+
+        # Victim removed, mover survived
+        assert victim_wp not in gm.graphic_pieces
+        assert mover_gp in gm.graphic_pieces
+
+
+# ─── Promotion with capture ───────────────────────────────────────────────────
+
+
+class TestPromotionWithCapture:
+    """A pawn captures and promotes simultaneously."""
+
+    def test_promotion_capture_leaves_one_promoted_piece(self):
+        state = ClientGameState()
+        state.board = [[".", "bR", "."], ["wP", ".", "."]]
+
+        victim_gp = MagicMock(spec=GraphicPiece)
+        victim_gp.piece = "bR"
+        victim_gp.row = 0
+        victim_gp.col = 1
+        victim_gp.is_moving = False
+
+        mover_gp = MagicMock(spec=GraphicPiece)
+        mover_gp.piece = "wP"
+        mover_gp.row = 1
+        mover_gp.col = 0
+        mover_gp.is_moving = True
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [victim_gp, mover_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            mover_gp.row = r
+            mover_gp.col = c
+            mover_gp.is_moving = False
+        def fake_promote(new_piece):
+            mover_gp.piece = new_piece
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        mover_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+        mover_gp.promote_to = MagicMock(side_effect=fake_promote)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[300] = mover_gp
+        proc._move_sources[300] = (1, 0)
+
+        proc._on_move_resolved({
+            "sequence_id": 300,
+            "piece": "wP",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 1,
+            "promoted_to": "wQ",
+            "captured_piece": "bR",
+        })
+
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 1]
+        assert len(at_dest) == 1
+        assert at_dest[0] is mover_gp
+        assert mover_gp.piece == "wQ"
+        assert victim_gp not in gm.graphic_pieces
+
+
+# ─── Missing tracked mover (client joined late) ──────────────────────────────
+
+
+class TestMissingTrackedMover:
+    """Client missed move_accepted — mover is not in _active_movements."""
+
+    def test_reconciliation_removes_stale_victim_without_tracked_mover(self):
+        state = ClientGameState()
+        # Board already shows the result: bR captured wP at (0,1)
+        state.board = [[".", "bR", "."]]
+
+        victim_gp = MagicMock(spec=GraphicPiece)
+        victim_gp.piece = "wP"
+        victim_gp.row = 0
+        victim_gp.col = 1
+        victim_gp.is_moving = False
+
+        # A "mystery" bR appeared (maybe client had it from initial board but
+        # didn't track the movement). It's already at dest.
+        arrived_gp = MagicMock(spec=GraphicPiece)
+        arrived_gp.piece = "bR"
+        arrived_gp.row = 0
+        arrived_gp.col = 1
+        arrived_gp.is_moving = False
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [victim_gp, arrived_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+
+        proc = _make_processor(state, gm)
+        # No entry in _active_movements — mover is unknown
+
+        proc._on_move_resolved({
+            "sequence_id": 999,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 1,
+            "promoted_to": None,
+            "captured_piece": "wP",
+        })
+
+        # The victim (wP) should be removed by reconciliation
+        # The arrived bR should remain (it matches the board)
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 1]
+        assert len(at_dest) == 1
+        assert at_dest[0].piece == "bR"
+        assert victim_gp not in gm.graphic_pieces
+
+
+# ─── GraphicsManager.get_pieces_at ───────────────────────────────────────────
+
+
+class TestGetPiecesAt:
+    """Verify the new GraphicsManager.get_pieces_at method."""
+
+    def test_returns_all_matching(self):
+        from game.graphics.graphics_manager import GraphicsManager
+
+        gm = GraphicsManager.__new__(GraphicsManager)
+        gm.graphic_pieces = []
+
+        gp1 = MagicMock(spec=GraphicPiece)
+        gp1.row, gp1.col, gp1.piece = 2, 3, "wR"
+        gp2 = MagicMock(spec=GraphicPiece)
+        gp2.row, gp2.col, gp2.piece = 2, 3, "bP"
+        gp3 = MagicMock(spec=GraphicPiece)
+        gp3.row, gp3.col, gp3.piece = 0, 0, "wK"
+
+        gm.graphic_pieces = [gp1, gp2, gp3]
+
+        result = gm.get_pieces_at(2, 3)
+        assert gp1 in result
+        assert gp2 in result
+        assert gp3 not in result
+        assert len(result) == 2
+
+    def test_returns_empty_when_none(self):
+        from game.graphics.graphics_manager import GraphicsManager
+
+        gm = GraphicsManager.__new__(GraphicsManager)
+        gm.graphic_pieces = []
+
+        assert gm.get_pieces_at(5, 5) == []

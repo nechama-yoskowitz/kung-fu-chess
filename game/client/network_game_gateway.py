@@ -45,8 +45,8 @@ class NetworkGameGateway(GameCommandGateway):
         return False
 
     def is_piece_resting_at(self, row: int, col: int) -> bool:
-        # Same rationale — rely on server rejection for accuracy.
-        return False
+        # Use client-side cooldown tracking for accurate selection behavior.
+        return self._state.is_piece_resting_at(row, col)
 
     def request_move(self, from_row: int, from_col: int,
                      to_row: int, to_col: int) -> MoveRequestResult:

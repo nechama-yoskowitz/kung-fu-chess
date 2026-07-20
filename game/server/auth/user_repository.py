@@ -125,6 +125,58 @@ class UserRepository:
         finally:
             self._close_connection(conn)
 
+    def update_rating(self, username: str, new_rating: int) -> None:
+        """
+        Update a user's rating.
+
+        Raises ValueError if the user does not exist.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "UPDATE users SET rating = ? WHERE username = ?",
+                (new_rating, username),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {username}")
+        finally:
+            self._close_connection(conn)
+
+    def update_ratings(
+        self,
+        winner_username: str,
+        winner_rating: int,
+        loser_username: str,
+        loser_rating: int,
+    ) -> None:
+        """
+        Atomically update both players' ratings in a single transaction.
+
+        If either user does not exist, both updates are rolled back.
+        Raises ValueError if either user is not found.
+        """
+        conn = self._get_connection()
+        try:
+            cursor1 = conn.execute(
+                "UPDATE users SET rating = ? WHERE username = ?",
+                (winner_rating, winner_username),
+            )
+            cursor2 = conn.execute(
+                "UPDATE users SET rating = ? WHERE username = ?",
+                (loser_rating, loser_username),
+            )
+            if cursor1.rowcount == 0 or cursor2.rowcount == 0:
+                conn.rollback()
+                missing = winner_username if cursor1.rowcount == 0 else loser_username
+                raise ValueError(f"User not found: {missing}")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._close_connection(conn)
+
     def close(self) -> None:
         """Close the shared connection (for in-memory databases)."""
         if self._shared_conn is not None:

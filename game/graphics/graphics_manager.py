@@ -60,6 +60,14 @@ class GraphicsManager:
                 return graphic_piece
 
         return None
+
+    def get_pieces_at(self, row: int, col: int) -> list[GraphicPiece]:
+        """Return all GraphicPieces whose logical position is (row, col)."""
+        return [
+            gp for gp in self.graphic_pieces
+            if gp.row == row and gp.col == col
+        ]
+
     def remove_piece(self, graphic_piece: GraphicPiece) -> None:
         """Remove a specific GraphicPiece from the managed list."""
         self.graphic_pieces.remove(graphic_piece)

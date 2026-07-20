@@ -115,6 +115,7 @@ class NetworkGameApplication:
             graphics_manager=self.graphics_manager,
             rows=rows,
             cols=cols,
+            cooldown_provider=lambda: self.state.get_cooldown_indicators(),
             selection_provider=lambda: self.controller.selected,
             game_end_animation=self.game_end_animation,
         )
@@ -187,6 +188,7 @@ class NetworkGameApplication:
         """Drain incoming messages each frame (called by GameLoop as engine_updater)."""
         if not self._running:
             return
+        self.state.advance_clock(delta_ms)
         messages = self.transport.drain_incoming()
         if messages:
             self.processor.process_messages(messages)

@@ -9,6 +9,7 @@ import logging
 
 from game.server.auth.user_repository import UserRepository
 from game.server.auth.user_service import UserService
+from game.server.rating.rating_service import RatingService
 from game.server.websocket_server import run_server, DEFAULT_HOST, DEFAULT_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -21,6 +22,7 @@ def main():
     repo = UserRepository(DB_PATH)
     repo.initialize_schema()
     user_service = UserService(repo)
+    rating_service = RatingService(repository=repo)
 
     print(f"Starting Kung-Fu Chess server on ws://{DEFAULT_HOST}:{DEFAULT_PORT}")
     print(f"Database: {DB_PATH}")
@@ -30,6 +32,7 @@ def main():
             host=DEFAULT_HOST,
             port=DEFAULT_PORT,
             user_service=user_service,
+            rating_service=rating_service,
         ))
     except KeyboardInterrupt:
         print("\nServer stopped.")

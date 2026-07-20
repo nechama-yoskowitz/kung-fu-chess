@@ -85,7 +85,7 @@ CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request", "ping"}
 SERVER_MESSAGE_TYPES = {
     "login_success", "game_state", "move_accepted", "move_rejected",
     "move_resolved", "jump_accepted", "jump_rejected",
-    "game_ended", "pong", "error",
+    "game_ended", "rating_updated", "pong", "error",
 }
 
 
@@ -210,6 +210,16 @@ def make_game_ended(winner: str, loser: str) -> str:
     return encode_message("game_ended", {
         "winner": winner,
         "loser": loser,
+    })
+
+
+def make_rating_updated(username: str, old_rating: int, new_rating: int, change: int) -> str:
+    """Server → Client: a player's rating was updated after a game."""
+    return encode_message("rating_updated", {
+        "username": username,
+        "old_rating": old_rating,
+        "new_rating": new_rating,
+        "change": change,
     })
 
 
