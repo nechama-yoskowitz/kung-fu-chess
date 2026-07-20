@@ -44,9 +44,12 @@ class NetworkGameApplication:
     Connects to a server, receives authoritative state, renders the game.
     """
 
-    def __init__(self, server_uri: str, username: str = "Player"):
+    def __init__(self, server_uri: str, username: str = "Player",
+                 password: str = "", action: str = "login"):
         self._server_uri = server_uri
         self._username = username
+        self._password = password
+        self._action = action
         self._running = True
 
         # Client-side event bus for sound/animation observers
@@ -141,7 +144,11 @@ class NetworkGameApplication:
 
         # Send login request as the first outgoing message
         from game.server.protocol import make_login_request
-        self._outgoing.put_nowait(make_login_request(self._username))
+        self._outgoing.put_nowait(
+            make_login_request(self._username, self._password, self._action)
+        )
+        # Clear password from instance immediately after queuing
+        self._password = None
 
         # Wait briefly for initial connection
         deadline = time.monotonic() + 5.0

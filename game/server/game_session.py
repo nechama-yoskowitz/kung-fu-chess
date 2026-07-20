@@ -29,7 +29,6 @@ from game.server.protocol import (
     make_move_resolved,
     make_pong,
     validate_jump_request,
-    validate_login_request,
     validate_move_request,
 )
 
@@ -97,11 +96,11 @@ class GameSession:
             messages.append(make_error("already logged in", "already_logged_in"))
             return messages
 
-        # Duplicate username check
+        # Duplicate username check (already-connected user with same name)
         active_usernames = set(self._player_usernames.values())
         if username in active_usernames:
             messages.append(make_error(
-                f"username '{username}' is already taken", "username_taken"
+                f"username '{username}' is already connected", "username_in_use"
             ))
             return messages
 
@@ -171,9 +170,6 @@ class GameSession:
         if msg_type == "ping":
             return make_pong()
 
-        if msg_type == "login_request":
-            return self._handle_login_request(payload, sender)
-
         # All gameplay messages require login
         if not self.is_logged_in(sender):
             return make_error("must login first", "not_logged_in")
@@ -230,23 +226,6 @@ class GameSession:
             self._player_colors[websocket] = "b"
             return "b"
         return None
-
-    def _handle_login_request(self, payload: dict, sender) -> str | list[str] | None:
-        """
-        Handle a login_request message. Validates username and assigns color.
-
-        Returns a list of messages to send to the sender (login_success + game_state),
-        or a single error message string.
-        """
-        error = validate_login_request(payload)
-        if error:
-            return make_error(error, "validation_error")
-
-        username = payload["username"].strip()
-        messages = self.login_client(sender, username)
-        if len(messages) == 1:
-            return messages[0]
-        return messages
 
     def _handle_move_request(self, payload: dict, sender) -> str:
         error = validate_move_request(payload)

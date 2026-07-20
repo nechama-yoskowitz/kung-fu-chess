@@ -92,9 +92,13 @@ SERVER_MESSAGE_TYPES = {
 # ─── Payload schemas ──────────────────────────────────────────────────────────
 
 
-def make_login_request(username: str) -> str:
-    """Client → Server: request login with a username."""
-    return encode_message("login_request", {"username": username})
+def make_login_request(username: str, password: str, action: str = "login") -> str:
+    """Client → Server: request login or registration with credentials."""
+    return encode_message("login_request", {
+        "action": action,
+        "username": username,
+        "password": password,
+    })
 
 
 def make_login_success(username: str, color: str) -> str:
@@ -235,6 +239,16 @@ def validate_jump_request(payload: dict) -> str | None:
 
 def validate_login_request(payload: dict) -> str | None:
     """Return error message if payload is invalid, None if valid."""
+    # Action field
+    if "action" not in payload:
+        return "missing field: action"
+    action = payload["action"]
+    if not isinstance(action, str):
+        return "action must be a string"
+    if action not in ("login", "register"):
+        return f"unsupported action: {action}"
+
+    # Username field
     if "username" not in payload:
         return "missing field: username"
     username = payload["username"]
@@ -242,4 +256,14 @@ def validate_login_request(payload: dict) -> str | None:
         return "username must be a string"
     if not username.strip():
         return "username must not be empty or whitespace-only"
+
+    # Password field
+    if "password" not in payload:
+        return "missing field: password"
+    password = payload["password"]
+    if not isinstance(password, str):
+        return "password must be a string"
+    if not password:
+        return "password must not be empty"
+
     return None

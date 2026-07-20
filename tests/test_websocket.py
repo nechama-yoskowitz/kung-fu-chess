@@ -2,7 +2,6 @@
 Tests for WebSocket server integration: connectivity, messaging, disconnect.
 
 Uses a free local port per test to avoid conflicts.
-Protocol-level tests are in test_protocol.py.
 """
 
 import asyncio
@@ -12,27 +11,40 @@ import pytest
 import pytest_asyncio
 import websockets
 
+from game.server.auth.user_repository import UserRepository
+from game.server.auth.user_service import UserService
 from game.server.protocol import make_login_request
 from game.server.websocket_server import GameWebSocketServer
 
 
-# --- Integration tests (require running server) ---
-
-
 @pytest_asyncio.fixture
 async def server():
-    """Start a server on a free port, yield (server, port), stop after test."""
-    srv = GameWebSocketServer(host="localhost", port=0)
+    """Start a server with in-memory auth on a free port."""
+    repo = UserRepository(":memory:")
+    repo.initialize_schema()
+    user_service = UserService(repo)
+    srv = GameWebSocketServer(
+        host="localhost", port=0, user_service=user_service
+    )
     await srv.start()
     port = srv._server.sockets[0].getsockname()[1]
-    yield srv, port
+    yield srv, port, user_service
     await srv.stop()
 
 
-async def _connect_and_login(port, username):
-    """Helper: connect and perform login handshake. Returns (ws, login_msg, state_msg)."""
+async def _connect_and_register(port, username, password="pass"):
+    """Connect, register, return (ws, login_resp, state_resp)."""
     ws = await websockets.connect(f"ws://localhost:{port}")
-    await ws.send(make_login_request(username))
+    await ws.send(make_login_request(username, password, action="register"))
+    login_resp = json.loads(await ws.recv())
+    state_resp = json.loads(await ws.recv())
+    return ws, login_resp, state_resp
+
+
+async def _connect_and_login(port, username, password="pass"):
+    """Connect, login (user must already be registered), return (ws, login_resp, state_resp)."""
+    ws = await websockets.connect(f"ws://localhost:{port}")
+    await ws.send(make_login_request(username, password, action="login"))
     login_resp = json.loads(await ws.recv())
     state_resp = json.loads(await ws.recv())
     return ws, login_resp, state_resp
@@ -41,36 +53,41 @@ async def _connect_and_login(port, username):
 @pytest.mark.asyncio
 class TestServerStartup:
     async def test_server_starts(self, server):
-        srv, port = server
+        srv, port, _ = server
         assert port > 0
 
     async def test_server_stops_cleanly(self):
-        srv = GameWebSocketServer(host="localhost", port=0)
+        repo = UserRepository(":memory:")
+        repo.initialize_schema()
+        srv = GameWebSocketServer(
+            host="localhost", port=0,
+            user_service=UserService(repo),
+        )
         await srv.start()
         await srv.stop()
 
 
 @pytest.mark.asyncio
 class TestClientConnection:
-    async def test_client_can_connect_and_login(self, server):
-        _, port = server
-        ws, login_resp, state_resp = await _connect_and_login(port, "Alice")
+    async def test_client_can_register_and_login(self, server):
+        _, port, _ = server
+        ws, login_resp, state_resp = await _connect_and_register(port, "Alice")
         assert login_resp["type"] == "login_success"
         assert login_resp["payload"]["color"] == "w"
         assert state_resp["type"] == "game_state"
         await ws.close()
 
     async def test_ping_returns_pong(self, server):
-        _, port = server
-        ws, _, _ = await _connect_and_login(port, "Alice")
+        _, port, _ = server
+        ws, _, _ = await _connect_and_register(port, "Alice")
         await ws.send("ping")
         response = await ws.recv()
         assert response == "pong"
         await ws.close()
 
     async def test_echo_response(self, server):
-        _, port = server
-        ws, _, _ = await _connect_and_login(port, "Alice")
+        _, port, _ = server
+        ws, _, _ = await _connect_and_register(port, "Alice")
         await ws.send("hello server")
         response = json.loads(await ws.recv())
         assert response["type"] == "echo"
@@ -78,8 +95,8 @@ class TestClientConnection:
         await ws.close()
 
     async def test_empty_message_error(self, server):
-        _, port = server
-        ws, _, _ = await _connect_and_login(port, "Alice")
+        _, port, _ = server
+        ws, _, _ = await _connect_and_register(port, "Alice")
         await ws.send("")
         response = json.loads(await ws.recv())
         assert response["type"] == "error"
@@ -90,9 +107,9 @@ class TestClientConnection:
 @pytest.mark.asyncio
 class TestMultipleClients:
     async def test_two_clients_independent(self, server):
-        _, port = server
-        ws1, _, _ = await _connect_and_login(port, "Alice")
-        ws2, _, _ = await _connect_and_login(port, "Bob")
+        _, port, _ = server
+        ws1, _, _ = await _connect_and_register(port, "Alice")
+        ws2, _, _ = await _connect_and_register(port, "Bob")
         await ws1.send("ping")
         await ws2.send("hello")
         r1 = await ws1.recv()
@@ -106,18 +123,18 @@ class TestMultipleClients:
 @pytest.mark.asyncio
 class TestClientDisconnect:
     async def test_disconnect_does_not_crash_server(self, server):
-        srv, port = server
+        srv, port, user_service = server
         uri = f"ws://localhost:{port}"
 
         ws = await websockets.connect(uri)
-        await ws.send(make_login_request("Alice"))
+        await ws.send(make_login_request("Alice", "pass", action="register"))
         await ws.recv()  # login_success
         await ws.recv()  # game_state
         await ws.close()
         await asyncio.sleep(0.05)
 
-        # New client can connect and login (gets freed white slot)
-        ws2, login_resp, _ = await _connect_and_login(port, "Bob")
+        # New client can connect and register (gets freed white slot)
+        ws2, login_resp, _ = await _connect_and_register(port, "Bob")
         assert login_resp["payload"]["color"] == "w"
         await ws2.close()
 

@@ -152,9 +152,17 @@ class ServerMessageProcessor:
 
         # Update graphics
         if outcome == "captured":
+            # The mover itself was captured (e.g. by an airborne piece) — remove it.
             if gp and gp in self._gm.graphic_pieces:
                 self._gm.remove_piece(gp)
         else:
+            # The mover arrived/stopped. If it captured a victim, remove the victim GP.
+            if captured_piece and final_row is not None and final_col is not None:
+                victim_gp = self._gm.get_piece_at(final_row, final_col)
+                if victim_gp is not None and victim_gp is not gp:
+                    self._gm.remove_piece(victim_gp)
+
+            # Snap the mover to its final position.
             if gp and final_row is not None and final_col is not None:
                 gp.finish_move_at(final_row, final_col)
                 if promoted_to:

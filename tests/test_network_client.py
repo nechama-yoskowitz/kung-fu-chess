@@ -228,6 +228,8 @@ class TestTransportWithServer:
     def test_receives_player_assigned_and_game_state(self):
         """Start a real server, connect transport, send login, receive messages."""
         import asyncio
+        from game.server.auth.user_repository import UserRepository
+        from game.server.auth.user_service import UserService
         from game.server.websocket_server import GameWebSocketServer
         from game.server.protocol import make_login_request
 
@@ -235,7 +237,12 @@ class TestTransportWithServer:
         server_port = [0]
 
         async def run_test_server():
-            srv = GameWebSocketServer(host="localhost", port=0)
+            repo = UserRepository(":memory:")
+            repo.initialize_schema()
+            user_service = UserService(repo)
+            srv = GameWebSocketServer(
+                host="localhost", port=0, user_service=user_service
+            )
             await srv.start()
             server_port[0] = srv._server.sockets[0].getsockname()[1]
             server_ready.set()
@@ -249,11 +256,11 @@ class TestTransportWithServer:
         server_thread.start()
         server_ready.wait(timeout=5)
 
-        # Connect transport and queue a login message
+        # Connect transport and queue a register message
         outgoing = queue.Queue()
         incoming = queue.Queue()
         uri = f"ws://localhost:{server_port[0]}"
-        outgoing.put_nowait(make_login_request("TestPlayer"))
+        outgoing.put_nowait(make_login_request("TestPlayer", "testpass", action="register"))
         transport = NetworkTransport(uri, outgoing, incoming)
         transport.start()
 
