@@ -101,9 +101,13 @@ def make_login_request(username: str, password: str, action: str = "login") -> s
     })
 
 
-def make_login_success(username: str, color: str) -> str:
-    """Server → Client: login accepted, color assigned."""
-    return encode_message("login_success", {"username": username, "color": color})
+def make_login_success(username: str, color: str, rating: int = 1200) -> str:
+    """Server → Client: login accepted, color assigned, rating included."""
+    return encode_message("login_success", {
+        "username": username,
+        "color": color,
+        "rating": rating,
+    })
 
 
 def make_move_request(from_row: int, from_col: int, to_row: int, to_col: int) -> str:

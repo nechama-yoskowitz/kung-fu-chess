@@ -128,7 +128,8 @@ class GameWebSocketServer:
         # Authentication succeeded — delegate to GameSession for player assignment
         # Use the canonical username from the database record
         canonical_username = result.user.username if result.user else username
-        messages = self.session.login_client(sender, canonical_username)
+        rating = result.user.rating if result.user else 1200
+        messages = self.session.login_client(sender, canonical_username, rating=rating)
         if len(messages) == 1:
             return messages[0]
         return messages

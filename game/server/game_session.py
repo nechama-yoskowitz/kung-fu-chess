@@ -81,13 +81,13 @@ class GameSession:
         """
         self._clients.add(websocket)
 
-    def login_client(self, websocket, username: str) -> list[str]:
+    def login_client(self, websocket, username: str, rating: int = 1200) -> list[str]:
         """
         Attempt to log in a connected client with the given username.
 
         Returns a list of messages to send to this client:
         - On success: login_success + game_state
-        - On failure: error message (username_taken or game_full)
+        - On failure: error message (username_in_use or game_full)
         """
         messages = []
 
@@ -111,7 +111,7 @@ class GameSession:
             return messages
 
         self._player_usernames[websocket] = username
-        messages.append(make_login_success(username=username, color=color))
+        messages.append(make_login_success(username=username, color=color, rating=rating))
         messages.append(self._make_game_state())
         return messages
 

@@ -63,6 +63,25 @@ class TestClientGameStateLoginSuccess:
         state = ClientGameState()
         assert state.player_identity_text is None
 
+    def test_stores_rating(self):
+        state = ClientGameState()
+        state.apply_login_success("w", "Nechama", 1200)
+        assert state.player_rating == 1200
+
+    def test_stores_custom_rating(self):
+        state = ClientGameState()
+        state.apply_login_success("b", "Pro", 1850)
+        assert state.player_rating == 1850
+
+    def test_default_rating_when_omitted(self):
+        state = ClientGameState()
+        state.apply_login_success("w", "New")
+        assert state.player_rating == 1200
+
+    def test_rating_none_before_login(self):
+        state = ClientGameState()
+        assert state.player_rating is None
+
     def test_apply_player_assigned_does_not_set_username(self):
         """Backward-compat: apply_player_assigned only sets color."""
         state = ClientGameState()
@@ -82,13 +101,28 @@ class TestProcessorLoginSuccess:
         proc = ServerMessageProcessor(state, gm)
         proc.process_messages([{
             "type": "login_success",
-            "payload": {"color": "w", "username": "Nechama"},
+            "payload": {"color": "w", "username": "Nechama", "rating": 1200},
         }])
 
         assert state.player_color == "w"
         assert state.player_username == "Nechama"
+        assert state.player_rating == 1200
         assert state.connected is True
         assert state.player_identity_text == "Nechama | White"
+
+    def test_login_success_with_custom_rating(self):
+        state = ClientGameState()
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = []
+        gm.get_piece_at.return_value = None
+
+        proc = ServerMessageProcessor(state, gm)
+        proc.process_messages([{
+            "type": "login_success",
+            "payload": {"color": "b", "username": "Expert", "rating": 1650},
+        }])
+
+        assert state.player_rating == 1650
 
     def test_player_assigned_still_works(self):
         """Legacy player_assigned message still sets color and connected."""

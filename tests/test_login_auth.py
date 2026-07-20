@@ -129,6 +129,7 @@ class TestServerAuthIntegration:
         assert success["type"] == "login_success"
         assert success["payload"]["color"] == "w"
         assert success["payload"]["username"] == "Alice"
+        assert success["payload"]["rating"] == 1200
 
     async def test_login_assigns_player(self):
         server, user_service, session = _make_server_with_auth()

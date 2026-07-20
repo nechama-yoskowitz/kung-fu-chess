@@ -26,6 +26,7 @@ class ClientGameState:
         self.game_over: bool = False
         self.player_color: str | None = None
         self.player_username: str | None = None
+        self.player_rating: int | None = None
         self.connected: bool = False
 
     def apply_player_assigned(self, color: str) -> None:
@@ -33,10 +34,11 @@ class ClientGameState:
         self.player_color = color
         self.connected = True
 
-    def apply_login_success(self, color: str, username: str) -> None:
+    def apply_login_success(self, color: str, username: str, rating: int = 1200) -> None:
         """Update from a login_success message."""
         self.player_color = color
         self.player_username = username
+        self.player_rating = rating
         self.connected = True
 
     @property
