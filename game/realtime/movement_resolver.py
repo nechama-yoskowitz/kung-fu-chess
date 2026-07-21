@@ -272,9 +272,10 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
             if final:
                 fr, fc = final
                 board[fr][fc] = move.piece
-                # Promotion
+                # Promotion — but not when the captured piece is a king (game ends).
                 promoted_to = None
-                if is_pawn(move.piece):
+                captured = move_captured_piece.get(move.sequence_id)
+                if is_pawn(move.piece) and not (captured and is_king(captured)):
                     color = get_color(move.piece)
                     if fr == pawn_promotion_row(board, color):
                         board[fr][fc] = make_piece(color, PIECE_QUEEN)
@@ -288,7 +289,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                     "final_row": fr,
                     "final_col": fc,
                     "promoted_to": promoted_to,
-                    "captured_piece": move_captured_piece.get(move.sequence_id),
+                    "captured_piece": captured,
                 })
             else:
                 resolved_moves.append({
