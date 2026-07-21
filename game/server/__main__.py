@@ -7,12 +7,13 @@ Starts the WebSocket server on localhost:8765 with SQLite-backed authentication.
 import asyncio
 import logging
 
+from game.logging_config import setup_logging
 from game.server.auth.user_repository import UserRepository
 from game.server.auth.user_service import UserService
 from game.server.rating.rating_service import RatingService
 from game.server.websocket_server import run_server, DEFAULT_HOST, DEFAULT_PORT
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+setup_logging(enable_file=True, log_file="server.log")
 
 DB_PATH = "kungfu_chess.db"
 

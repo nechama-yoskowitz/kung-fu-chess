@@ -165,6 +165,7 @@ class GameWebSocketServer:
                     room_id=room_id,
                     session_id=session_id,
                 )
+                logger.info(f"Reconnect reservation: username={username} color={color} session={session_id}")
                 # Notify remaining session members
                 msg = make_player_disconnected(username, color, 20)
                 session._queue_broadcast(msg)
@@ -230,6 +231,7 @@ class GameWebSocketServer:
             result = self.user_service.authenticate(username, password)
 
         if not result.success:
+            logger.warning(f"Login failed: username={username} action={action} error={result.error}")
             return make_error(
                 result.error or "authentication failed",
                 result.error or "invalid_credentials",
@@ -237,6 +239,7 @@ class GameWebSocketServer:
 
         canonical_username = result.user.username if result.user else username
         rating = result.user.rating if result.user else 1200
+        logger.info(f"Login success: username={canonical_username} action={action} rating={rating}")
 
         # Track authenticated state
         self._authenticated[sender] = {
@@ -267,10 +270,12 @@ class GameWebSocketServer:
         session = self.session_manager.get_session_by_id(pending.session_id)
         if session is None or session.engine.game_over:
             self.reconnect_manager.cancel(username)
+            logger.warning(f"Reconnect failed: username={username} reason=game_no_longer_available")
             return make_error("game no longer available", "reconnect_failed")
 
         # Cancel the reconnect timer
         self.reconnect_manager.cancel(username)
+        logger.info(f"Reconnect success: username={username} color={pending.color} session={pending.session_id}")
 
         # Re-register in the session with the original color
         session.add_client(websocket)
@@ -323,6 +328,7 @@ class GameWebSocketServer:
         if not added:
             return make_error("already in matchmaking queue", "already_queued")
 
+        logger.info(f"Matchmaking: {auth['username']} entered queue (rating={auth['rating']})")
         return make_matchmaking_started()
 
     def _handle_cancel_matchmaking(self, sender) -> str:
@@ -346,6 +352,7 @@ class GameWebSocketServer:
             return make_error(error, error)
 
         await room.session.start_tick_loop()
+        logger.info(f"Room created: room_id={room.room_id} creator={auth['username']}")
         return make_room_created(room.room_id)
 
     async def _handle_join_room(self, payload: dict, sender) -> str | list[str]:
@@ -402,6 +409,7 @@ class GameWebSocketServer:
             return
 
         p1, p2 = match.player1, match.player2
+        logger.info(f"Match found: {p1.username} ({p1.rating}) vs {p2.username} ({p2.rating})")
 
         # Create a new GameSession for the matched players
         session = self.session_manager.create_session()
@@ -503,6 +511,7 @@ class GameWebSocketServer:
         """Handle expired reconnect records — auto-resign the disconnected player."""
         expired = self.reconnect_manager.get_expired()
         for record in expired:
+            logger.warning(f"Reconnect timeout: username={record.username} color={record.color} session={record.session_id}")
             session = self.session_manager.get_session_by_id(record.session_id)
             if session is None or session.engine.game_over:
                 continue

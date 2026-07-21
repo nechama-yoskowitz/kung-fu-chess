@@ -113,6 +113,11 @@ class RatingService:
         )
         self._processed_games.add(game_id)
 
+        logger.info(
+            f"Rating updated: {winner_username} {old_winner_rating}->{new_winner_rating}, "
+            f"{loser_username} {old_loser_rating}->{new_loser_rating}"
+        )
+
         return GameRatingResult(
             winner=RatingUpdate(
                 username=winner_username,
