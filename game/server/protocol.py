@@ -67,7 +67,8 @@ def make_error(message: str, code: str = "protocol_error") -> str:
 # ping: keepalive
 
 CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request",
-                        "play_request", "cancel_matchmaking", "ping"}
+                        "play_request", "cancel_matchmaking",
+                        "create_room", "join_room", "ping"}
 
 
 # ─── Server → Client message types ────────────────────────────────────────────
@@ -89,6 +90,7 @@ SERVER_MESSAGE_TYPES = {
     "game_ended", "rating_updated",
     "matchmaking_started", "match_found", "matchmaking_timeout",
     "matchmaking_cancelled",
+    "room_created", "room_joined", "room_not_found", "room_full",
     "pong", "error",
 }
 
@@ -273,6 +275,29 @@ def make_matchmaking_timeout() -> str:
 def make_matchmaking_cancelled() -> str:
     """Server → Client: matchmaking was cancelled by the player."""
     return encode_message("matchmaking_cancelled")
+
+
+# ─── Room messages ────────────────────────────────────────────────────────────
+
+
+def make_create_room() -> str:
+    """Client → Server: request to create a new room."""
+    return encode_message("create_room")
+
+
+def make_join_room(room_id: str) -> str:
+    """Client → Server: request to join a room by ID."""
+    return encode_message("join_room", {"room_id": room_id})
+
+
+def make_room_created(room_id: str) -> str:
+    """Server → Client: room was created, includes the room ID."""
+    return encode_message("room_created", {"room_id": room_id})
+
+
+def make_room_joined(room_id: str, color: str) -> str:
+    """Server → Client: successfully joined a room."""
+    return encode_message("room_joined", {"room_id": room_id, "color": color})
 
 
 # ─── Validation ───────────────────────────────────────────────────────────────

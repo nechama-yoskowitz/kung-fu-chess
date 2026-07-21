@@ -23,9 +23,12 @@ from game.server.protocol import (
     make_matchmaking_started,
     make_matchmaking_timeout,
     make_rating_updated,
+    make_room_created,
+    make_room_joined,
     validate_login_request,
 )
 from game.server.rating.rating_service import RatingService
+from game.server.room_manager import RoomManager
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,7 @@ class GameWebSocketServer:
         self.rating_service = rating_service
         self.matchmaking = matchmaking or MatchmakingService()
         self.session_manager = session_manager or GameSessionManager()
+        self.room_manager = RoomManager(self.session_manager)
         self._server = None
         # Tracks authenticated clients: websocket → {"username": str, "rating": int}
         self._authenticated: dict = {}
@@ -128,6 +132,8 @@ class GameWebSocketServer:
         self._connected.discard(websocket)
         self.matchmaking.remove_by_websocket(websocket)
         self._authenticated.pop(websocket, None)
+        # Remove from their room (cleans up empty rooms)
+        self.room_manager.remove_player(websocket)
         # Remove from their game session
         session = self.session_manager.get_session_for_client(websocket)
         if session:
@@ -149,6 +155,12 @@ class GameWebSocketServer:
 
             if msg_type == "cancel_matchmaking":
                 return self._handle_cancel_matchmaking(sender)
+
+            if msg_type == "create_room":
+                return await self._handle_create_room(sender)
+
+            if msg_type == "join_room":
+                return await self._handle_join_room(msg.get("payload", {}), sender)
 
         # Gameplay messages go to the client's assigned session
         session = self.session_manager.get_session_for_client(sender)
@@ -234,6 +246,44 @@ class GameWebSocketServer:
         if removed:
             return make_matchmaking_cancelled()
         return make_error("not in matchmaking queue", "not_queued")
+
+    async def _handle_create_room(self, sender) -> str:
+        """Create a new room and assign the creator as White."""
+        auth = self._authenticated.get(sender)
+        if auth is None:
+            return make_error("must login first", "not_logged_in")
+
+        room = self.room_manager.create_room()
+        error = self.room_manager.join_room(
+            room.room_id, sender, auth["username"], auth["rating"]
+        )
+        if error:
+            return make_error(error, error)
+
+        await room.session.start_tick_loop()
+        return make_room_created(room.room_id)
+
+    async def _handle_join_room(self, payload: dict, sender) -> str:
+        """Join an existing room by ID."""
+        auth = self._authenticated.get(sender)
+        if auth is None:
+            return make_error("must login first", "not_logged_in")
+
+        room_id = payload.get("room_id", "")
+        if not room_id:
+            return make_error("missing room_id", "invalid_request")
+
+        error = self.room_manager.join_room(
+            room_id, sender, auth["username"], auth["rating"]
+        )
+        if error == "room_not_found":
+            return make_error("room not found", "room_not_found")
+        if error == "room_full":
+            return make_error("room is full", "room_full")
+
+        room = self.room_manager.get_room(room_id)
+        color = room.session.get_player_color(sender) or "b"
+        return make_room_joined(room_id, color)
 
     async def _matchmaking_loop(self) -> None:
         """Periodically check for matches and timeouts."""
