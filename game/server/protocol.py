@@ -66,7 +66,8 @@ def make_error(message: str, code: str = "protocol_error") -> str:
 # jump_request: client asks to jump a piece
 # ping: keepalive
 
-CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request", "ping"}
+CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request",
+                        "play_request", "cancel_matchmaking", "ping"}
 
 
 # ─── Server → Client message types ────────────────────────────────────────────
@@ -85,7 +86,10 @@ CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request", "ping"}
 SERVER_MESSAGE_TYPES = {
     "login_success", "game_state", "move_accepted", "move_rejected",
     "move_resolved", "jump_accepted", "jump_rejected",
-    "game_ended", "rating_updated", "pong", "error",
+    "game_ended", "rating_updated",
+    "matchmaking_started", "match_found", "matchmaking_timeout",
+    "matchmaking_cancelled",
+    "pong", "error",
 }
 
 
@@ -226,6 +230,49 @@ def make_rating_updated(username: str, old_rating: int, new_rating: int, change:
 def make_pong() -> str:
     """Server → Client: keepalive response."""
     return encode_message("pong")
+
+
+# ─── Matchmaking messages ─────────────────────────────────────────────────────
+
+
+def make_play_request() -> str:
+    """Client → Server: request to enter matchmaking."""
+    return encode_message("play_request")
+
+
+def make_cancel_matchmaking() -> str:
+    """Client → Server: cancel matchmaking."""
+    return encode_message("cancel_matchmaking")
+
+
+def make_matchmaking_started() -> str:
+    """Server → Client: player has entered the matchmaking queue."""
+    return encode_message("matchmaking_started")
+
+
+def make_match_found(
+    opponent_username: str,
+    color: str,
+    own_rating: int,
+    opponent_rating: int,
+) -> str:
+    """Server → Client: a match was found."""
+    return encode_message("match_found", {
+        "opponent_username": opponent_username,
+        "color": color,
+        "own_rating": own_rating,
+        "opponent_rating": opponent_rating,
+    })
+
+
+def make_matchmaking_timeout() -> str:
+    """Server → Client: matchmaking timed out (no compatible opponent found)."""
+    return encode_message("matchmaking_timeout")
+
+
+def make_matchmaking_cancelled() -> str:
+    """Server → Client: matchmaking was cancelled by the player."""
+    return encode_message("matchmaking_cancelled")
 
 
 # ─── Validation ───────────────────────────────────────────────────────────────

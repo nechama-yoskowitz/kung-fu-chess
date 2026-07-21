@@ -27,6 +27,7 @@ class ClientGameState:
         self.player_color: str | None = None
         self.player_username: str | None = None
         self.player_rating: int | None = None
+        self.opponent_username: str | None = None
         self.connected: bool = False
         # Active cooldowns: list of (row, col, expires_at_ms)
         self._active_cooldowns: list[tuple[int, int, float]] = []
@@ -66,6 +67,13 @@ class ClientGameState:
         """Update player_rating only if the username matches our own."""
         if self.player_username is not None and username == self.player_username:
             self.player_rating = new_rating
+
+    def apply_match_found(self, payload: dict) -> None:
+        """Store match information from a match_found message."""
+        self.opponent_username = payload.get("opponent_username")
+        color = payload.get("color")
+        if color:
+            self.player_color = color
 
     def apply_move_resolved(
         self,

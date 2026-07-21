@@ -61,6 +61,10 @@ class ServerMessageProcessor:
             "jump_rejected": self._on_jump_rejected,
             "game_ended": self._on_game_ended,
             "rating_updated": self._on_rating_updated,
+            "matchmaking_started": self._on_matchmaking_started,
+            "match_found": self._on_match_found,
+            "matchmaking_timeout": self._on_matchmaking_timeout,
+            "matchmaking_cancelled": self._on_matchmaking_cancelled,
             "error": self._on_error,
             "pong": lambda p: None,
             "raw": lambda p: None,
@@ -248,6 +252,22 @@ class ServerMessageProcessor:
         new_rating = payload.get("new_rating")
         if username and new_rating is not None:
             self._state.apply_rating_updated(username, new_rating)
+
+    def _on_matchmaking_started(self, payload: dict) -> None:
+        """Matchmaking queue entered — informational."""
+        pass
+
+    def _on_match_found(self, payload: dict) -> None:
+        """A match was found — store opponent info in state."""
+        self._state.apply_match_found(payload)
+
+    def _on_matchmaking_timeout(self, payload: dict) -> None:
+        """Matchmaking timed out — informational."""
+        pass
+
+    def _on_matchmaking_cancelled(self, payload: dict) -> None:
+        """Matchmaking was cancelled — informational."""
+        pass
 
     def _on_error(self, payload: dict) -> None:
         code = payload.get("code", "")
