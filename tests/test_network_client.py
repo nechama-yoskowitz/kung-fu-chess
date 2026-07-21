@@ -230,6 +230,7 @@ class TestTransportWithServer:
         import asyncio
         from game.server.auth.user_repository import UserRepository
         from game.server.auth.user_service import UserService
+        from game.server.game_session import GameSession
         from game.server.websocket_server import GameWebSocketServer
         from game.server.protocol import make_login_request
 
@@ -241,7 +242,9 @@ class TestTransportWithServer:
             repo.initialize_schema()
             user_service = UserService(repo)
             srv = GameWebSocketServer(
-                host="localhost", port=0, user_service=user_service
+                host="localhost", port=0,
+                user_service=user_service,
+                session=GameSession(),
             )
             await srv.start()
             server_port[0] = srv._server.sockets[0].getsockname()[1]

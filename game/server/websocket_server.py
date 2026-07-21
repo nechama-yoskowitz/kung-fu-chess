@@ -2,7 +2,8 @@
 WebSocket server for Kung-Fu Chess multiplayer.
 
 Accepts client connections, authenticates via UserService,
-manages matchmaking, and delegates gameplay to GameSessions.
+manages matchmaking, creates GameSessions via GameSessionManager,
+and routes gameplay messages to the correct session.
 """
 
 import asyncio
@@ -12,6 +13,7 @@ import websockets
 
 from game.server.auth.user_service import UserService
 from game.server.game_session import GameSession
+from game.server.game_session_manager import GameSessionManager
 from game.server.matchmaking.matchmaking_service import MatchmakingService
 from game.server.protocol import (
     decode_message,
@@ -36,102 +38,60 @@ MATCHMAKING_POLL_INTERVAL = 0.5  # seconds
 class GameWebSocketServer:
     """
     Async WebSocket server. Authenticates clients via UserService,
-    manages matchmaking, then routes gameplay messages through GameSession.
+    manages matchmaking, creates game sessions via GameSessionManager,
+    and routes gameplay messages to the correct session per client.
     """
 
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                  session: GameSession | None = None,
                  user_service: UserService | None = None,
                  rating_service: RatingService | None = None,
-                 matchmaking: MatchmakingService | None = None):
+                 matchmaking: MatchmakingService | None = None,
+                 session_manager: GameSessionManager | None = None):
         self.host = host
         self.port = port
-        self.session = session or GameSession()
         self.user_service = user_service
         self.rating_service = rating_service
         self.matchmaking = matchmaking or MatchmakingService()
+        self.session_manager = session_manager or GameSessionManager()
         self._server = None
         # Tracks authenticated clients: websocket → {"username": str, "rating": int}
         self._authenticated: dict = {}
-        # Game ID derived from the session's engine identity.
-        self._game_id = f"game-{id(self.session.engine)}"
+        # All connected websockets (for lifecycle management)
+        self._connected: set = set()
         # Matchmaking poll task
         self._matchmaking_task: asyncio.Task | None = None
 
-        # Subscribe to GameEnded for rating updates
-        if self.rating_service:
-            from game.events.engine_events import GameEnded
-            self.session.engine.event_bus.subscribe(
-                GameEnded, self._on_game_ended_for_rating
-            )
-
-    def _on_game_ended_for_rating(self, event) -> None:
-        """
-        React to GameEnded by computing and broadcasting rating updates.
-
-        This runs synchronously inside the engine's EventBus dispatch
-        (during tick), so we queue messages into the session outbox.
-        """
-        if self.rating_service is None:
-            return
-
-        winner_username = None
-        loser_username = None
-
-        for ws, color in self.session._player_colors.items():
-            username = self.session._player_usernames.get(ws)
-            if color == event.winner:
-                winner_username = username
-            elif color == event.loser:
-                loser_username = username
-
-        if not winner_username or not loser_username:
-            logger.warning("Rating update skipped: could not resolve both player usernames")
-            return
-
-        result = self.rating_service.process_game_end(
-            game_id=self._game_id,
-            winner_username=winner_username,
-            loser_username=loser_username,
-        )
-
-        if result is None:
-            return
-
-        winner_msg = make_rating_updated(
-            username=result.winner.username,
-            old_rating=result.winner.old_rating,
-            new_rating=result.winner.new_rating,
-            change=result.winner.change,
-        )
-        loser_msg = make_rating_updated(
-            username=result.loser.username,
-            old_rating=result.loser.old_rating,
-            new_rating=result.loser.new_rating,
-            change=result.loser.change,
-        )
-
-        self.session._queue_broadcast(winner_msg)
-        self.session._queue_broadcast(loser_msg)
+        # Backward compatibility: if a pre-built session is provided,
+        # register it in the manager (supports existing tests).
+        if session is not None:
+            self.session = session
+            self.session_manager._sessions[f"game-{id(session.engine)}"] = session
+        else:
+            self.session = None
 
     async def start(self) -> None:
-        """Start the server and the game tick loop."""
+        """Start the server and the matchmaking loop."""
         self._server = await websockets.serve(
             self._handle_client, self.host, self.port
         )
-        await self.session.start_tick_loop()
+        # Start tick loops for any pre-registered sessions
+        for session in self.session_manager._sessions.values():
+            await session.start_tick_loop()
         self._matchmaking_task = asyncio.create_task(self._matchmaking_loop())
         logger.info(f"Server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
-        """Shut down the server and tick loop cleanly."""
+        """Shut down the server cleanly."""
         if self._matchmaking_task:
             self._matchmaking_task.cancel()
             try:
                 await self._matchmaking_task
             except asyncio.CancelledError:
                 pass
-        await self.session.stop_tick_loop()
+        # Stop all active session tick loops
+        for session in list(self.session_manager._sessions.values()):
+            await session.stop_tick_loop()
         if self._server:
             self._server.close()
             await self._server.wait_closed()
@@ -141,8 +101,7 @@ class GameWebSocketServer:
         """Handle a single client connection lifecycle."""
         remote = websocket.remote_address
         logger.info(f"Client connected: {remote}")
-
-        self.session.add_client(websocket)
+        self._connected.add(websocket)
 
         try:
             async for message in websocket:
@@ -153,15 +112,27 @@ class GameWebSocketServer:
                             await websocket.send(msg)
                     else:
                         await websocket.send(response)
-                await self.session.drain_outbox()
+                # Drain outbox for the client's session if they have one
+                session = self.session_manager.get_session_for_client(websocket)
+                if session:
+                    await session.drain_outbox()
         except websockets.ConnectionClosed:
             logger.info(f"Client disconnected: {remote}")
         except Exception as e:
             logger.error(f"Error handling client {remote}: {e}")
         finally:
-            self.session.remove_client(websocket)
-            self.matchmaking.remove_by_websocket(websocket)
-            self._authenticated.pop(websocket, None)
+            self._cleanup_client(websocket)
+
+    def _cleanup_client(self, websocket) -> None:
+        """Remove client from all server state on disconnect."""
+        self._connected.discard(websocket)
+        self.matchmaking.remove_by_websocket(websocket)
+        self._authenticated.pop(websocket, None)
+        # Remove from their game session
+        session = self.session_manager.get_session_for_client(websocket)
+        if session:
+            session.remove_client(websocket)
+        self.session_manager.remove_client(websocket)
 
     async def _route_message(self, raw: str, sender) -> str | list[str] | None:
         """Route messages to the appropriate handler."""
@@ -179,11 +150,19 @@ class GameWebSocketServer:
             if msg_type == "cancel_matchmaking":
                 return self._handle_cancel_matchmaking(sender)
 
-        # All other messages go to GameSession
-        return await self.session.handle_message(raw, sender=sender)
+        # Gameplay messages go to the client's assigned session
+        session = self.session_manager.get_session_for_client(sender)
+        if session:
+            return await session.handle_message(raw, sender=sender)
+
+        # Backward compat: if a single session exists and client is registered there
+        if self.session is not None:
+            return await self.session.handle_message(raw, sender=sender)
+
+        return make_error("not in a game session", "no_session")
 
     def _handle_login_request(self, payload: dict, sender) -> str | list[str]:
-        """Authenticate via UserService, then assign player to the session."""
+        """Authenticate via UserService."""
         error = validate_login_request(payload)
         if error:
             return make_error(error, "invalid_login_request")
@@ -215,17 +194,28 @@ class GameWebSocketServer:
             "rating": rating,
         }
 
-        # Assign to the current game session
-        messages = self.session.login_client(sender, canonical_username, rating=rating)
-        if len(messages) == 1:
-            return messages[0]
-        return messages
+        # If there's a legacy single session, assign directly (backward compat for tests)
+        if self.session is not None:
+            messages = self.session.login_client(sender, canonical_username, rating=rating)
+            self.session_manager.assign_client_to_session(sender, self.session)
+            if len(messages) == 1:
+                return messages[0]
+            return messages
+
+        # Otherwise, client is authenticated but not yet in a game.
+        # They should use play_request to enter matchmaking.
+        from game.server.protocol import make_login_success
+        return make_login_success(username=canonical_username, color="", rating=rating)
 
     async def _handle_play_request(self, sender) -> str:
-        """Handle a play_request: add authenticated player to matchmaking queue."""
+        """Add authenticated player to matchmaking queue."""
         auth = self._authenticated.get(sender)
         if auth is None:
             return make_error("must login first", "not_logged_in")
+
+        # Don't allow if already in a game
+        if self.session_manager.is_client_in_session(sender):
+            return make_error("already in a game", "already_in_game")
 
         added = self.matchmaking.enqueue(
             websocket=sender,
@@ -239,7 +229,7 @@ class GameWebSocketServer:
         return make_matchmaking_started()
 
     def _handle_cancel_matchmaking(self, sender) -> str:
-        """Handle cancel_matchmaking: remove from queue."""
+        """Remove from matchmaking queue."""
         removed = self.matchmaking.cancel(sender)
         if removed:
             return make_matchmaking_cancelled()
@@ -252,7 +242,7 @@ class GameWebSocketServer:
             await self._process_matchmaking()
 
     async def _process_matchmaking(self) -> None:
-        """Check for timeouts and matches, send appropriate messages."""
+        """Check for timeouts and matches, create sessions for matched players."""
         # Handle timeouts
         timed_out = self.matchmaking.get_timed_out()
         for entry in timed_out:
@@ -268,8 +258,26 @@ class GameWebSocketServer:
 
         p1, p2 = match.player1, match.player2
 
-        # Send match_found to both players
-        # player1 gets White, player2 gets Black
+        # Create a new GameSession for the matched players
+        session = self.session_manager.create_session()
+        await session.start_tick_loop()
+
+        # Register players in the session
+        session.add_client(p1.websocket)
+        session.add_client(p2.websocket)
+        session.login_client(p1.websocket, p1.username, rating=p1.rating)
+        session.login_client(p2.websocket, p2.username, rating=p2.rating)
+
+        # Map websockets to this session
+        self.session_manager.assign_client_to_session(p1.websocket, session)
+        self.session_manager.assign_client_to_session(p2.websocket, session)
+
+        # Subscribe to GameEnded for rating updates
+        if self.rating_service:
+            session_id = self.session_manager.get_session_id(session)
+            self._subscribe_rating_updates(session, session_id)
+
+        # Send match_found to both players (player1=White, player2=Black)
         msg1 = make_match_found(
             opponent_username=p2.username,
             color="w",
@@ -292,9 +300,57 @@ class GameWebSocketServer:
         except Exception:
             pass
 
+    def _subscribe_rating_updates(self, session: GameSession, session_id: str) -> None:
+        """Subscribe to GameEnded on a session's engine for rating updates."""
+        from game.events.engine_events import GameEnded
+
+        def on_game_ended(event):
+            if self.rating_service is None:
+                return
+
+            winner_username = None
+            loser_username = None
+
+            for ws, color in session._player_colors.items():
+                username = session._player_usernames.get(ws)
+                if color == event.winner:
+                    winner_username = username
+                elif color == event.loser:
+                    loser_username = username
+
+            if not winner_username or not loser_username:
+                return
+
+            result = self.rating_service.process_game_end(
+                game_id=session_id,
+                winner_username=winner_username,
+                loser_username=loser_username,
+            )
+
+            if result is None:
+                return
+
+            winner_msg = make_rating_updated(
+                username=result.winner.username,
+                old_rating=result.winner.old_rating,
+                new_rating=result.winner.new_rating,
+                change=result.winner.change,
+            )
+            loser_msg = make_rating_updated(
+                username=result.loser.username,
+                old_rating=result.loser.old_rating,
+                new_rating=result.loser.new_rating,
+                change=result.loser.change,
+            )
+
+            session._queue_broadcast(winner_msg)
+            session._queue_broadcast(loser_msg)
+
+        session.engine.event_bus.subscribe(GameEnded, on_game_ended)
+
     @property
     def client_count(self) -> int:
-        return self.session.client_count
+        return len(self._connected)
 
 
 async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,

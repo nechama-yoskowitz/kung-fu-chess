@@ -461,19 +461,15 @@ class TestGameIdLifecycle:
         assert alice_after.rating < 1216
 
     def test_server_uses_engine_based_game_id(self):
-        """Different GameSession engines produce different game IDs."""
+        """Different GameSession engines produce different session IDs in the manager."""
         from game.server.game_session import GameSession
-        from game.server.websocket_server import GameWebSocketServer
+        from game.server.game_session_manager import GameSessionManager
 
-        repo = UserRepository(":memory:")
-        repo.initialize_schema()
-        rating_svc = RatingService(repository=repo)
+        mgr = GameSessionManager()
+        session1 = mgr.create_session()
+        session2 = mgr.create_session()
 
-        session1 = GameSession()
-        session2 = GameSession()
+        id1 = mgr.get_session_id(session1)
+        id2 = mgr.get_session_id(session2)
 
-        srv1 = GameWebSocketServer(session=session1, rating_service=rating_svc)
-        srv2 = GameWebSocketServer(session=session2, rating_service=rating_svc)
-
-        # Different sessions have different engine IDs
-        assert srv1._game_id != srv2._game_id
+        assert id1 != id2

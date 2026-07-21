@@ -231,7 +231,7 @@ class TestServerMatchmakingIntegration:
     async def test_unauthenticated_cannot_play(self):
         srv = GameWebSocketServer()
         ws = _ws()
-        srv.session.add_client(ws)
+        srv._connected.add(ws)
 
         raw = make_play_request()
         result = await srv._route_message(raw, ws)
@@ -247,7 +247,7 @@ class TestServerMatchmakingIntegration:
 
         srv = GameWebSocketServer(user_service=user_svc)
         ws = _ws()
-        srv.session.add_client(ws)
+        srv._connected.add(ws)
 
         # Authenticate
         from game.server.protocol import make_login_request
@@ -267,7 +267,7 @@ class TestServerMatchmakingIntegration:
 
         srv = GameWebSocketServer(user_service=user_svc)
         ws = _ws()
-        srv.session.add_client(ws)
+        srv._connected.add(ws)
 
         from game.server.protocol import make_login_request
         await srv._route_message(make_login_request("alice", "pass", "login"), ws)
@@ -286,7 +286,7 @@ class TestServerMatchmakingIntegration:
 
         srv = GameWebSocketServer(user_service=user_svc)
         ws = _ws()
-        srv.session.add_client(ws)
+        srv._connected.add(ws)
 
         from game.server.protocol import make_login_request
         await srv._route_message(make_login_request("alice", "pass", "login"), ws)
@@ -306,8 +306,8 @@ class TestServerMatchmakingIntegration:
 
         srv = GameWebSocketServer(user_service=user_svc)
         ws1, ws2 = _ws(), _ws()
-        srv.session.add_client(ws1)
-        srv.session.add_client(ws2)
+        srv._connected.add(ws1)
+        srv._connected.add(ws2)
 
         from game.server.protocol import make_login_request
         await srv._route_message(make_login_request("alice", "pass", "login"), ws1)
@@ -348,8 +348,8 @@ class TestServerMatchmakingIntegration:
 
         srv = GameWebSocketServer(user_service=user_svc)
         ws1, ws2 = _ws(), _ws()
-        srv.session.add_client(ws1)
-        srv.session.add_client(ws2)
+        srv._connected.add(ws1)
+        srv._connected.add(ws2)
 
         from game.server.protocol import make_login_request
         await srv._route_message(make_login_request("pro", "pass", "login"), ws1)

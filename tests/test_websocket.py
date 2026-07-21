@@ -13,18 +13,22 @@ import websockets
 
 from game.server.auth.user_repository import UserRepository
 from game.server.auth.user_service import UserService
+from game.server.game_session import GameSession
 from game.server.protocol import make_login_request
 from game.server.websocket_server import GameWebSocketServer
 
 
 @pytest_asyncio.fixture
 async def server():
-    """Start a server with in-memory auth on a free port."""
+    """Start a server with in-memory auth and a pre-built session (legacy mode)."""
     repo = UserRepository(":memory:")
     repo.initialize_schema()
     user_service = UserService(repo)
+    session = GameSession()
     srv = GameWebSocketServer(
-        host="localhost", port=0, user_service=user_service
+        host="localhost", port=0,
+        user_service=user_service,
+        session=session,
     )
     await srv.start()
     port = srv._server.sockets[0].getsockname()[1]
@@ -36,15 +40,6 @@ async def _connect_and_register(port, username, password="pass"):
     """Connect, register, return (ws, login_resp, state_resp)."""
     ws = await websockets.connect(f"ws://localhost:{port}")
     await ws.send(make_login_request(username, password, action="register"))
-    login_resp = json.loads(await ws.recv())
-    state_resp = json.loads(await ws.recv())
-    return ws, login_resp, state_resp
-
-
-async def _connect_and_login(port, username, password="pass"):
-    """Connect, login (user must already be registered), return (ws, login_resp, state_resp)."""
-    ws = await websockets.connect(f"ws://localhost:{port}")
-    await ws.send(make_login_request(username, password, action="login"))
     login_resp = json.loads(await ws.recv())
     state_resp = json.loads(await ws.recv())
     return ws, login_resp, state_resp
@@ -62,6 +57,7 @@ class TestServerStartup:
         srv = GameWebSocketServer(
             host="localhost", port=0,
             user_service=UserService(repo),
+            session=GameSession(),
         )
         await srv.start()
         await srv.stop()
