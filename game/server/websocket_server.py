@@ -149,8 +149,11 @@ class GameWebSocketServer:
         auth = self._authenticated.pop(websocket, None)
 
         # Check if this was an active player in a game session (not a viewer)
+        # Only start reconnect if the game has actually started (2 players present)
         session = self.session_manager.get_session_for_client(websocket)
-        if session and not session.is_viewer(websocket) and not session.engine.game_over:
+        if (session and not session.is_viewer(websocket)
+                and not session.engine.game_over
+                and len(session._player_colors) >= 2):
             color = session.get_player_color(websocket)
             username = session.get_player_username(websocket) or (auth["username"] if auth else None)
             session_id = self.session_manager.get_session_id(session)
@@ -298,7 +301,7 @@ class GameWebSocketServer:
         # Send current game state to the reconnected player
         from game.server.protocol import make_game_state, make_login_success
         messages = [
-            make_login_success(username=username, color=pending.color, rating=rating),
+            make_login_success(username=username, color=pending.color, rating=rating, reconnected=True),
             make_game_state(
                 board=session.engine.board,
                 clock=session.engine.clock,
@@ -374,8 +377,23 @@ class GameWebSocketServer:
         room = self.room_manager.get_room(room_id)
         color = room.session.get_player_color(sender) if role == "player" else None
 
-        # Send room_joined + game_state for viewers
+        # Send room_joined to the joiner
         messages = [make_room_joined(room_id, color, role)]
+
+        # When the second player joins (room now full), broadcast game_state to ALL
+        if role == "player" and room.is_full:
+            from game.server.protocol import make_game_state
+            game_state_msg = make_game_state(
+                board=room.session.engine.board,
+                clock=room.session.engine.clock,
+                white_score=room.session.engine.white_score,
+                black_score=room.session.engine.black_score,
+                game_over=room.session.engine.game_over,
+            )
+            # Queue broadcast to all session members (including Player 1)
+            room.session._queue_broadcast(game_state_msg)
+
+        # Viewers get immediate game_state in their response
         if role == "viewer":
             from game.server.protocol import make_game_state
             messages.append(make_game_state(
@@ -385,6 +403,7 @@ class GameWebSocketServer:
                 black_score=room.session.engine.black_score,
                 game_over=room.session.engine.game_over,
             ))
+
         return messages
 
     async def _matchmaking_loop(self) -> None:

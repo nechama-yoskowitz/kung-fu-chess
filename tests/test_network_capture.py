@@ -781,3 +781,157 @@ class TestGetPiecesAt:
         gm.graphic_pieces = []
 
         assert gm.get_pieces_at(5, 5) == []
+
+
+# ─── King capture while king is moving ────────────────────────────────────────
+
+
+class TestKingCapturedWhileMoving:
+    """
+    Regression: when black captures a moving white king, both pieces disappear.
+    Only the king should disappear; the capturing piece must remain.
+    """
+
+    def test_capturing_piece_survives_when_king_caught_moving(self):
+        """
+        Simulate: king moves away, black piece resolves capture.
+        Two move_resolved messages arrive: king=captured, black=arrived.
+        The capturing piece's GP must not be removed.
+        """
+        state = ClientGameState()
+        # Initial board: king at (0,4), black rook at (2,4)
+        state.board = [
+            [".", ".", ".", ".", "wK", ".", ".", "."],
+            [".", ".", ".", ".", ".", ".", ".", "."],
+            [".", ".", ".", ".", "bR", ".", ".", "."],
+        ]
+
+        king_gp = MagicMock(spec=GraphicPiece)
+        king_gp.piece = "wK"
+        king_gp.row = 0
+        king_gp.col = 4
+        king_gp.is_moving = False  # animation already finished at source
+
+        attacker_gp = MagicMock(spec=GraphicPiece)
+        attacker_gp.piece = "bR"
+        attacker_gp.row = 0  # animation ALREADY finished (race!) — at king's source
+        attacker_gp.col = 4
+        attacker_gp.is_moving = False
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [king_gp, attacker_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+        def fake_finish(r, c):
+            attacker_gp.row = r
+            attacker_gp.col = c
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+        attacker_gp.finish_move_at = MagicMock(side_effect=fake_finish)
+
+        proc = _make_processor(state, gm)
+
+        # Track both moves
+        proc._active_movements[1] = king_gp   # king's move
+        proc._active_movements[2] = attacker_gp  # attacker's move
+        proc._move_sources[1] = (0, 4)  # king started at (0,4)
+        proc._move_sources[2] = (2, 4)  # attacker started at (2,4)
+
+        # Process king's resolution FIRST (captured while moving)
+        proc._on_move_resolved({
+            "sequence_id": 1,
+            "piece": "wK",
+            "outcome": "captured",
+            "final_row": None,
+            "final_col": None,
+            "promoted_to": None,
+            "captured_piece": "wK",
+        })
+
+        # King should be removed
+        assert king_gp not in gm.graphic_pieces
+
+        # Process attacker's resolution (arrived at king's original position)
+        proc._on_move_resolved({
+            "sequence_id": 2,
+            "piece": "bR",
+            "outcome": "arrived",
+            "final_row": 0,
+            "final_col": 4,
+            "promoted_to": None,
+            "captured_piece": "wK",
+        })
+
+        # Attacker MUST survive
+        assert attacker_gp in gm.graphic_pieces
+        # Only one piece at (0,4) — the attacker
+        at_dest = [g for g in gm.graphic_pieces if g.row == 0 and g.col == 4]
+        assert len(at_dest) == 1
+        assert at_dest[0] is attacker_gp
+
+    def test_attacker_animation_finished_early_not_removed_by_king_source_reconcile(self):
+        """
+        The attacker's animation finishes before its move_resolved arrives.
+        When the king's source cell is reconciled (board shows "."),
+        the attacker GP must NOT be removed because it's still tracked
+        as an active movement.
+        """
+        state = ClientGameState()
+        state.board = [
+            [".", ".", ".", ".", "wK", ".", ".", "."],
+            [".", ".", ".", ".", ".", ".", ".", "."],
+            [".", ".", ".", ".", "bR", ".", ".", "."],
+        ]
+
+        king_gp = MagicMock(spec=GraphicPiece)
+        king_gp.piece = "wK"
+        king_gp.row = 0
+        king_gp.col = 4
+        king_gp.is_moving = False
+
+        # Attacker's animation already completed at king's position
+        attacker_gp = MagicMock(spec=GraphicPiece)
+        attacker_gp.piece = "bR"
+        attacker_gp.row = 0
+        attacker_gp.col = 4  # same as king's source!
+        attacker_gp.is_moving = False
+
+        gm = MagicMock(spec=GraphicsManager)
+        gm.graphic_pieces = [king_gp, attacker_gp]
+
+        def get_pieces_at(r, c):
+            return [g for g in gm.graphic_pieces if g.row == r and g.col == c]
+        def remove_piece(g):
+            gm.graphic_pieces.remove(g)
+
+        gm.get_pieces_at = MagicMock(side_effect=get_pieces_at)
+        gm.get_piece_at = MagicMock(side_effect=lambda r, c: next(
+            (g for g in gm.graphic_pieces if g.row == r and g.col == c), None))
+        gm.remove_piece = MagicMock(side_effect=remove_piece)
+
+        proc = _make_processor(state, gm)
+        proc._active_movements[1] = king_gp
+        proc._active_movements[2] = attacker_gp  # STILL tracked — awaiting resolution
+        proc._move_sources[1] = (0, 4)
+        proc._move_sources[2] = (2, 4)
+
+        # King captured — its source (0,4) reconciled with board "."
+        proc._on_move_resolved({
+            "sequence_id": 1,
+            "piece": "wK",
+            "outcome": "captured",
+            "final_row": None,
+            "final_col": None,
+            "promoted_to": None,
+            "captured_piece": "wK",
+        })
+
+        # King removed, but attacker MUST survive (still in _active_movements)
+        assert king_gp not in gm.graphic_pieces
+        assert attacker_gp in gm.graphic_pieces

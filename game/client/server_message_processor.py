@@ -89,11 +89,10 @@ class ServerMessageProcessor:
             self._state.apply_player_assigned(color)
 
     def _on_login_success(self, payload: dict) -> None:
-        color = payload.get("color")
+        color = payload.get("color", "")
         username = payload.get("username", "")
         rating = payload.get("rating", 1200)
-        if color:
-            self._state.apply_login_success(color, username, rating)
+        self._state.apply_login_success(color or None, username, rating)
 
     def _on_game_state(self, payload: dict) -> None:
         board = payload.get("board", [])
@@ -203,6 +202,7 @@ class ServerMessageProcessor:
         Removes non-moving GraphicPieces that don't match the board token.
         Preserves the `survivor` object (the known-correct mover) even if
         it hasn't been fully snapped yet.
+        Preserves any GP still tracked as an active movement (awaiting resolution).
         If survivor is present, all other stationary pieces at the cell are
         removed regardless of token (prevents duplicates from race conditions).
         """
@@ -211,12 +211,16 @@ class ServerMessageProcessor:
             return
 
         expected_piece = board[row][col]
+        # GPs that are awaiting their own move_resolved should not be removed
+        active_gps = set(self._active_movements.values())
         to_remove = []
 
         for gp in self._gm.get_pieces_at(row, col):
             if gp is survivor:
                 continue
             if gp.is_moving:
+                continue
+            if gp in active_gps:
                 continue
             # Stationary GP at this cell — remove if it doesn't belong.
             if expected_piece == "." or gp.piece != expected_piece:

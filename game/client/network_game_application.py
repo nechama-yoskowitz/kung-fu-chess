@@ -51,6 +51,7 @@ class NetworkGameApplication:
         self._password = password
         self._action = action
         self._running = True
+        self._needs_login = True
 
         # Client-side event bus for sound/animation observers
         self.event_bus = EventBus()
@@ -65,6 +66,37 @@ class NetworkGameApplication:
         # Transport
         self.transport = NetworkTransport(server_uri, self._outgoing, self._incoming)
 
+        self._init_graphics()
+
+    @classmethod
+    def from_transport(cls, transport, outgoing, incoming, state):
+        """
+        Create a NetworkGameApplication reusing an existing transport and state.
+
+        Used by the terminal lobby after authentication and game-start are complete.
+        """
+        obj = cls.__new__(cls)
+        obj._server_uri = None
+        obj._username = state.player_username
+        obj._password = None
+        obj._action = None
+        obj._running = True
+        obj._needs_login = False
+
+        obj.event_bus = EventBus()
+        obj.state = state
+        obj._outgoing = outgoing
+        obj._incoming = incoming
+        obj.transport = transport
+
+        obj._init_graphics()
+        return obj
+
+    def _init_graphics(self):
+        """Initialize all graphics, sound, and composition subsystems."""
+
+    def _init_graphics(self):
+        """Initialize all graphics, sound, and composition subsystems."""
         # Graphics
         self.renderer = Renderer(BOARD_IMAGE_PATH)
         self.sprite_manager = SpriteManager(PIECES_ROOT_PATH)
@@ -140,34 +172,37 @@ class NetworkGameApplication:
         )
 
     def run(self):
-        """Connect to server and run the graphical game loop."""
-        self.transport.start()
+        """Connect to server (if needed) and run the graphical game loop."""
+        if self._needs_login:
+            self.transport.start()
 
-        # Send login request as the first outgoing message
-        from game.server.protocol import make_login_request
-        self._outgoing.put_nowait(
-            make_login_request(self._username, self._password, self._action)
-        )
-        # Clear password from instance immediately after queuing
-        self._password = None
+            # Send login request as the first outgoing message
+            from game.server.protocol import make_login_request
+            self._outgoing.put_nowait(
+                make_login_request(self._username, self._password, self._action)
+            )
+            self._password = None
 
-        # Wait briefly for initial connection
-        deadline = time.monotonic() + 5.0
-        while not self.state.connected and time.monotonic() < deadline:
-            messages = self.transport.drain_incoming()
-            self.processor.process_messages(messages)
-            time.sleep(0.05)
+            # Wait for authentication
+            deadline = time.monotonic() + 5.0
+            while not self.state.connected and time.monotonic() < deadline:
+                messages = self.transport.drain_incoming()
+                self.processor.process_messages(messages)
+                time.sleep(0.05)
 
-        if not self.state.connected:
-            error = self.transport.error or "Connection timeout"
-            print(f"Failed to connect: {error}")
-            self.transport.stop()
-            return
+            if not self.state.connected:
+                error = self.transport.error or "Connection timeout"
+                print(f"Failed to connect: {error}")
+                self.transport.stop()
+                return
 
-        # Print friendly shell confirmation
-        if self.state.player_identity_text:
-            color_name = "White" if self.state.player_color == "w" else "Black"
-            print(f"Logged in as '{self.state.player_username}' - you are {color_name}.")
+            if self.state.player_identity_text:
+                color_name = "White" if self.state.player_color == "w" else "Black"
+                print(f"Logged in as '{self.state.player_username}' - you are {color_name}.")
+        else:
+            # Already authenticated via from_transport — sync graphics to existing board
+            if self.state.board:
+                self.processor._sync_graphics_to_board(self.state.board)
 
         game_loop = GameLoop(
             frame_composer=self.frame_composer,

@@ -108,12 +108,14 @@ def make_login_request(username: str, password: str, action: str = "login") -> s
     })
 
 
-def make_login_success(username: str, color: str, rating: int = 1200) -> str:
+def make_login_success(username: str, color: str, rating: int = 1200,
+                       reconnected: bool = False) -> str:
     """Server → Client: login accepted, color assigned, rating included."""
     return encode_message("login_success", {
         "username": username,
         "color": color,
         "rating": rating,
+        "reconnected": reconnected,
     })
 
 
