@@ -63,8 +63,9 @@ class TestRoomManagerJoin:
         room = rm.create_room()
         ws = _ws()
 
-        error = rm.join_room(room.room_id, ws, "alice", 1200)
+        error, role = rm.join_room(room.room_id, ws, "alice", 1200)
         assert error is None
+        assert role == "player"
         assert ws in room.players
 
     def test_join_assigns_color(self):
@@ -92,10 +93,10 @@ class TestRoomManagerJoin:
         rm = RoomManager(mgr)
         ws = _ws()
 
-        error = rm.join_room("nonexistent", ws, "alice", 1200)
+        error, role = rm.join_room("nonexistent", ws, "alice", 1200)
         assert error == "room_not_found"
 
-    def test_join_full_room(self):
+    def test_third_joiner_becomes_viewer(self):
         mgr = GameSessionManager()
         rm = RoomManager(mgr)
         room = rm.create_room()
@@ -103,8 +104,10 @@ class TestRoomManagerJoin:
 
         rm.join_room(room.room_id, ws1, "alice", 1200)
         rm.join_room(room.room_id, ws2, "bob", 1200)
-        error = rm.join_room(room.room_id, ws3, "carol", 1200)
-        assert error == "room_full"
+        error, role = rm.join_room(room.room_id, ws3, "carol", 1200)
+        assert error is None
+        assert role == "viewer"
+        assert ws3 in room.viewers
 
 
 class TestRoomManagerCleanup:
@@ -192,12 +195,16 @@ class TestServerRoomIntegration:
         result1 = await srv._route_message(make_create_room(), ws1)
         room_id = decode_message(result1)["payload"]["room_id"]
 
-        # Bob joins
+        # Bob joins as player
         result2 = await srv._route_message(make_join_room(room_id), ws2)
-        msg = decode_message(result2)
+        if isinstance(result2, list):
+            msg = decode_message(result2[0])
+        else:
+            msg = decode_message(result2)
         assert msg["type"] == "room_joined"
         assert msg["payload"]["room_id"] == room_id
         assert msg["payload"]["color"] == "b"
+        assert msg["payload"]["role"] == "player"
 
     async def test_join_invalid_room(self):
         repo = UserRepository(":memory:")
@@ -217,7 +224,7 @@ class TestServerRoomIntegration:
         assert msg["type"] == "error"
         assert msg["payload"]["code"] == "room_not_found"
 
-    async def test_join_full_room(self):
+    async def test_third_joiner_becomes_viewer(self):
         repo = UserRepository(":memory:")
         repo.initialize_schema()
         user_svc = UserService(repo)
@@ -240,9 +247,14 @@ class TestServerRoomIntegration:
         await srv._route_message(make_join_room(room_id), ws2)
 
         result3 = await srv._route_message(make_join_room(room_id), ws3)
-        msg = decode_message(result3)
-        assert msg["type"] == "error"
-        assert msg["payload"]["code"] == "room_full"
+        # Third joiner is a viewer, not rejected
+        if isinstance(result3, list):
+            msg = decode_message(result3[0])
+        else:
+            msg = decode_message(result3)
+        assert msg["type"] == "room_joined"
+        assert msg["payload"]["role"] == "viewer"
+        assert msg["payload"]["color"] is None
 
     async def test_gameplay_inside_room(self):
         repo = UserRepository(":memory:")

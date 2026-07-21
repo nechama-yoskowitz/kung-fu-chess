@@ -295,9 +295,13 @@ def make_room_created(room_id: str) -> str:
     return encode_message("room_created", {"room_id": room_id})
 
 
-def make_room_joined(room_id: str, color: str) -> str:
+def make_room_joined(room_id: str, color: str | None, role: str = "player") -> str:
     """Server → Client: successfully joined a room."""
-    return encode_message("room_joined", {"room_id": room_id, "color": color})
+    return encode_message("room_joined", {
+        "room_id": room_id,
+        "role": role,
+        "color": color,
+    })
 
 
 # ─── Validation ───────────────────────────────────────────────────────────────

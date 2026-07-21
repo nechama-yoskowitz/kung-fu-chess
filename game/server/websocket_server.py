@@ -254,7 +254,7 @@ class GameWebSocketServer:
             return make_error("must login first", "not_logged_in")
 
         room = self.room_manager.create_room()
-        error = self.room_manager.join_room(
+        error, role = self.room_manager.join_room(
             room.room_id, sender, auth["username"], auth["rating"]
         )
         if error:
@@ -263,8 +263,8 @@ class GameWebSocketServer:
         await room.session.start_tick_loop()
         return make_room_created(room.room_id)
 
-    async def _handle_join_room(self, payload: dict, sender) -> str:
-        """Join an existing room by ID."""
+    async def _handle_join_room(self, payload: dict, sender) -> str | list[str]:
+        """Join an existing room by ID as player or viewer."""
         auth = self._authenticated.get(sender)
         if auth is None:
             return make_error("must login first", "not_logged_in")
@@ -273,17 +273,27 @@ class GameWebSocketServer:
         if not room_id:
             return make_error("missing room_id", "invalid_request")
 
-        error = self.room_manager.join_room(
+        error, role = self.room_manager.join_room(
             room_id, sender, auth["username"], auth["rating"]
         )
         if error == "room_not_found":
             return make_error("room not found", "room_not_found")
-        if error == "room_full":
-            return make_error("room is full", "room_full")
 
         room = self.room_manager.get_room(room_id)
-        color = room.session.get_player_color(sender) or "b"
-        return make_room_joined(room_id, color)
+        color = room.session.get_player_color(sender) if role == "player" else None
+
+        # Send room_joined + game_state for viewers
+        messages = [make_room_joined(room_id, color, role)]
+        if role == "viewer":
+            from game.server.protocol import make_game_state
+            messages.append(make_game_state(
+                board=room.session.engine.board,
+                clock=room.session.engine.clock,
+                white_score=room.session.engine.white_score,
+                black_score=room.session.engine.black_score,
+                game_over=room.session.engine.game_over,
+            ))
+        return messages
 
     async def _matchmaking_loop(self) -> None:
         """Periodically check for matches and timeouts."""

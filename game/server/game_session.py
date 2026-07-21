@@ -63,6 +63,7 @@ class GameSession:
         self._clients: set = set()
         self._player_colors: dict = {}  # websocket → "w" | "b"
         self._player_usernames: dict = {}  # websocket → username
+        self._viewers: set = set()  # websockets that are spectating
         self._tick_task: asyncio.Task | None = None
         # Queue for messages produced by synchronous EventBus callbacks.
         self._outbox: deque[str] = deque()
@@ -118,18 +119,28 @@ class GameSession:
     def remove_client(self, websocket) -> None:
         """Unregister a client and free their color and username."""
         self._clients.discard(websocket)
+        self._viewers.discard(websocket)
         if websocket in self._player_colors:
             del self._player_colors[websocket]
         if websocket in self._player_usernames:
             del self._player_usernames[websocket]
+
+    def add_viewer(self, websocket) -> None:
+        """Add a client as a viewer (spectator). Receives broadcasts but cannot play."""
+        self._clients.add(websocket)
+        self._viewers.add(websocket)
+
+    def is_viewer(self, websocket) -> bool:
+        """Return True if the websocket is a viewer."""
+        return websocket in self._viewers
 
     def is_full(self) -> bool:
         """True if both player slots are taken."""
         return len(self._player_colors) >= MAX_PLAYERS
 
     def is_logged_in(self, websocket) -> bool:
-        """True if the client has completed the login handshake."""
-        return websocket in self._player_colors
+        """True if the client has completed the login handshake (player or viewer)."""
+        return websocket in self._player_colors or websocket in self._viewers
 
     @property
     def client_count(self) -> int:
@@ -173,6 +184,10 @@ class GameSession:
         # All gameplay messages require login
         if not self.is_logged_in(sender):
             return make_error("must login first", "not_logged_in")
+
+        # Viewers cannot perform gameplay actions
+        if self.is_viewer(sender):
+            return make_error("viewers cannot perform actions", "viewer_action_forbidden")
 
         if msg_type == "move_request":
             return self._handle_move_request(payload, sender)
@@ -340,23 +355,23 @@ class GameSession:
         self._outbox.append(message)
 
     async def _broadcast_async(self, message: str) -> None:
-        """Send a message to all connected clients, tolerating failures."""
+        """Send a message to all connected clients (players and viewers)."""
         if not self._clients:
             return
 
-        # Only broadcast to logged-in clients
-        logged_in = [c for c in self._clients if c in self._player_colors]
-        if not logged_in:
+        # Broadcast to players and viewers
+        recipients = [c for c in self._clients if c in self._player_colors or c in self._viewers]
+        if not recipients:
             return
 
         results = await asyncio.gather(
-            *[client.send(message) for client in logged_in],
+            *[client.send(message) for client in recipients],
             return_exceptions=True,
         )
 
         # Remove clients that failed
         failed = set()
-        for client, result in zip(logged_in, results):
+        for client, result in zip(recipients, results):
             if isinstance(result, Exception):
                 failed.add(client)
 
