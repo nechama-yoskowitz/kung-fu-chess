@@ -136,7 +136,7 @@ class NetworkGameApplication:
             game_over_provider=lambda: self.state.game_over,
             board_rect_provider=self._get_board_rect,
             original_board_size_provider=self._get_original_board_size,
-            input_blocked_provider=lambda: not self.state.connected,
+            input_blocked_provider=lambda: not self.state.connected or self.state.is_viewer,
         )
 
     def run(self):

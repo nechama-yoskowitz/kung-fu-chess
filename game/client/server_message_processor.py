@@ -65,6 +65,11 @@ class ServerMessageProcessor:
             "match_found": self._on_match_found,
             "matchmaking_timeout": self._on_matchmaking_timeout,
             "matchmaking_cancelled": self._on_matchmaking_cancelled,
+            "room_created": self._on_room_created,
+            "room_joined": self._on_room_joined,
+            "player_disconnected": self._on_player_disconnected,
+            "reconnect_countdown": self._on_reconnect_countdown,
+            "player_reconnected": self._on_player_reconnected,
             "error": self._on_error,
             "pong": lambda p: None,
             "raw": lambda p: None,
@@ -242,7 +247,10 @@ class ServerMessageProcessor:
     def _on_game_ended(self, payload: dict) -> None:
         winner = payload.get("winner", "w")
         loser = payload.get("loser", "b")
+        reason = payload.get("reason")
         self._state.game_over = True
+        self._state.winner_color = winner
+        self._state.game_end_reason = reason
 
         if self._event_bus:
             self._event_bus.publish(GameEnded(winner=winner, loser=loser))
@@ -254,20 +262,49 @@ class ServerMessageProcessor:
             self._state.apply_rating_updated(username, new_rating)
 
     def _on_matchmaking_started(self, payload: dict) -> None:
-        """Matchmaking queue entered — informational."""
-        pass
+        """Matchmaking queue entered."""
+        self._state.apply_matchmaking_started()
 
     def _on_match_found(self, payload: dict) -> None:
         """A match was found — store opponent info in state."""
         self._state.apply_match_found(payload)
 
     def _on_matchmaking_timeout(self, payload: dict) -> None:
-        """Matchmaking timed out — informational."""
-        pass
+        """Matchmaking timed out."""
+        self._state.apply_matchmaking_ended()
 
     def _on_matchmaking_cancelled(self, payload: dict) -> None:
-        """Matchmaking was cancelled — informational."""
-        pass
+        """Matchmaking was cancelled."""
+        self._state.apply_matchmaking_ended()
+
+    def _on_room_created(self, payload: dict) -> None:
+        """Room was created — store room ID."""
+        room_id = payload.get("room_id", "")
+        self._state.apply_room_created(room_id)
+
+    def _on_room_joined(self, payload: dict) -> None:
+        """Joined a room — store room info and role."""
+        room_id = payload.get("room_id", "")
+        role = payload.get("role", "player")
+        color = payload.get("color")
+        self._state.apply_room_joined(room_id, role, color)
+
+    def _on_player_disconnected(self, payload: dict) -> None:
+        """A player disconnected — store for display."""
+        username = payload.get("username", "")
+        color = payload.get("color", "")
+        remaining = payload.get("remaining_seconds", 20)
+        self._state.apply_player_disconnected(username, color, remaining)
+
+    def _on_reconnect_countdown(self, payload: dict) -> None:
+        """Reconnect countdown update."""
+        remaining = payload.get("remaining_seconds", 0)
+        self._state.apply_reconnect_countdown(remaining)
+
+    def _on_player_reconnected(self, payload: dict) -> None:
+        """A player reconnected — clear disconnect state."""
+        username = payload.get("username", "")
+        self._state.apply_player_reconnected(username)
 
     def _on_error(self, payload: dict) -> None:
         code = payload.get("code", "")

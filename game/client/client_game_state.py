@@ -29,6 +29,18 @@ class ClientGameState:
         self.player_rating: int | None = None
         self.opponent_username: str | None = None
         self.connected: bool = False
+        # Room/matchmaking state
+        self.room_id: str | None = None
+        self.room_role: str | None = None  # "player" or "viewer"
+        self.is_viewer: bool = False
+        self.matchmaking_active: bool = False
+        # Reconnect state
+        self.disconnected_player: str | None = None  # username of disconnected player
+        self.disconnected_color: str | None = None
+        self.reconnect_remaining: int | None = None  # seconds
+        # Game result
+        self.game_end_reason: str | None = None  # e.g. "checkmate", "auto_resign"
+        self.winner_color: str | None = None
         # Active cooldowns: list of (row, col, expires_at_ms)
         self._active_cooldowns: list[tuple[int, int, float]] = []
         self._local_clock: float = 0.0
@@ -74,6 +86,44 @@ class ClientGameState:
         color = payload.get("color")
         if color:
             self.player_color = color
+        self.matchmaking_active = False
+
+    def apply_matchmaking_started(self) -> None:
+        """Mark that matchmaking is active."""
+        self.matchmaking_active = True
+
+    def apply_matchmaking_ended(self) -> None:
+        """Mark that matchmaking ended (timeout or cancelled)."""
+        self.matchmaking_active = False
+
+    def apply_room_created(self, room_id: str) -> None:
+        """Store room creation info."""
+        self.room_id = room_id
+        self.room_role = "player"
+
+    def apply_room_joined(self, room_id: str, role: str, color: str | None) -> None:
+        """Store room join info."""
+        self.room_id = room_id
+        self.room_role = role
+        self.is_viewer = (role == "viewer")
+        if color:
+            self.player_color = color
+
+    def apply_player_disconnected(self, username: str, color: str, remaining: int) -> None:
+        """A player disconnected — store for display."""
+        self.disconnected_player = username
+        self.disconnected_color = color
+        self.reconnect_remaining = remaining
+
+    def apply_reconnect_countdown(self, remaining: int) -> None:
+        """Update the reconnect countdown seconds."""
+        self.reconnect_remaining = remaining
+
+    def apply_player_reconnected(self, username: str) -> None:
+        """A player reconnected — clear disconnect state."""
+        self.disconnected_player = None
+        self.disconnected_color = None
+        self.reconnect_remaining = None
 
     def apply_move_resolved(
         self,
