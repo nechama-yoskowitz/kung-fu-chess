@@ -29,15 +29,49 @@ def main():
         default=None,
         help="WebSocket server URI (e.g. ws://localhost:8765). Omit for local mode.",
     )
+    parser.add_argument(
+        "--terminal",
+        action="store_true",
+        help="Use terminal-based lobby instead of graphical UI.",
+    )
     args = parser.parse_args()
 
     if args.server:
-        _run_network_mode(args.server)
+        if args.terminal:
+            _run_network_mode(args.server)
+        else:
+            _run_graphical_lobby(args.server)
     else:
         # Local mode (unchanged)
         from game.application.game_application import GameApplication
         app = GameApplication()
         app.run()
+
+
+def _run_graphical_lobby(server_uri: str):
+    """Network mode with graphical lobby UI."""
+    if not server_uri.startswith("ws://") and not server_uri.startswith("wss://"):
+        print(f"Error: Invalid server URI: {server_uri}")
+        sys.exit(1)
+
+    from game.client.ui.lobby_app import LobbyApp
+    from game.client.network_game_application import NetworkGameApplication
+
+    lobby = LobbyApp(server_uri)
+    game_ready = lobby.run()
+
+    if not game_ready:
+        return
+
+    # Launch the graphical chess game using the lobby's transport
+    client = lobby.client
+    app = NetworkGameApplication.from_transport(
+        transport=client.transport,
+        outgoing=client.outgoing,
+        incoming=client.incoming,
+        state=client.state,
+    )
+    app.run()
 
 
 def _run_network_mode(server_uri: str):

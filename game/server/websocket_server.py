@@ -204,6 +204,9 @@ class GameWebSocketServer:
             if msg_type == "join_room":
                 return await self._handle_join_room(msg.get("payload", {}), sender)
 
+            if msg_type == "leave_room":
+                return self._handle_leave_room(sender)
+
         # Gameplay messages go to the client's assigned session
         session = self.session_manager.get_session_for_client(sender)
         if session:
@@ -405,6 +408,21 @@ class GameWebSocketServer:
             ))
 
         return messages
+
+    def _handle_leave_room(self, sender) -> str:
+        """Handle leave_room: remove player from their room."""
+        room = self.room_manager.get_room_for_client(sender)
+        if room is None:
+            return make_error("not in a room", "not_in_room")
+
+        self.room_manager.remove_client(sender)
+        session = self.session_manager.get_session_for_client(sender)
+        if session:
+            session.remove_client(sender)
+        self.session_manager.remove_client(sender)
+
+        from game.server.protocol import encode_message
+        return encode_message("room_left", {})
 
     async def _matchmaking_loop(self) -> None:
         """Periodically check for matches and timeouts."""

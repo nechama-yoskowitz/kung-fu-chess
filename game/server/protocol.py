@@ -68,7 +68,7 @@ def make_error(message: str, code: str = "protocol_error") -> str:
 
 CLIENT_MESSAGE_TYPES = {"login_request", "move_request", "jump_request",
                         "play_request", "cancel_matchmaking",
-                        "create_room", "join_room", "ping"}
+                        "create_room", "join_room", "leave_room", "ping"}
 
 
 # ─── Server → Client message types ────────────────────────────────────────────
@@ -91,6 +91,7 @@ SERVER_MESSAGE_TYPES = {
     "matchmaking_started", "match_found", "matchmaking_timeout",
     "matchmaking_cancelled",
     "room_created", "room_joined", "room_not_found", "room_full",
+    "room_left",
     "player_disconnected", "reconnect_countdown", "player_reconnected",
     "pong", "error",
 }
@@ -291,6 +292,11 @@ def make_create_room() -> str:
 def make_join_room(room_id: str) -> str:
     """Client → Server: request to join a room by ID."""
     return encode_message("join_room", {"room_id": room_id})
+
+
+def make_leave_room() -> str:
+    """Client → Server: leave the current room."""
+    return encode_message("leave_room")
 
 
 def make_room_created(room_id: str) -> str:
