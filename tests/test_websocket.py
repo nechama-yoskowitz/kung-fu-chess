@@ -129,9 +129,9 @@ class TestClientDisconnect:
         await ws.close()
         await asyncio.sleep(0.05)
 
-        # New client can connect and register (gets freed white slot)
+        # With reconnect reservation active, new client gets black (Alice's slot reserved)
         ws2, login_resp, _ = await _connect_and_register(port, "Bob")
-        assert login_resp["payload"]["color"] == "w"
+        assert login_resp["payload"]["color"] == "b"
         await ws2.close()
 
 

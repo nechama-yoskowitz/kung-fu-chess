@@ -91,6 +91,7 @@ SERVER_MESSAGE_TYPES = {
     "matchmaking_started", "match_found", "matchmaking_timeout",
     "matchmaking_cancelled",
     "room_created", "room_joined", "room_not_found", "room_full",
+    "player_disconnected", "reconnect_countdown", "player_reconnected",
     "pong", "error",
 }
 
@@ -300,6 +301,35 @@ def make_room_joined(room_id: str, color: str | None, role: str = "player") -> s
     return encode_message("room_joined", {
         "room_id": room_id,
         "role": role,
+        "color": color,
+    })
+
+
+# ─── Reconnect messages ───────────────────────────────────────────────────────
+
+
+def make_player_disconnected(username: str, color: str, remaining_seconds: int) -> str:
+    """Server → Client: a player has disconnected, countdown started."""
+    return encode_message("player_disconnected", {
+        "username": username,
+        "color": color,
+        "remaining_seconds": remaining_seconds,
+    })
+
+
+def make_reconnect_countdown(username: str, color: str, remaining_seconds: int) -> str:
+    """Server → Client: countdown update for disconnected player."""
+    return encode_message("reconnect_countdown", {
+        "username": username,
+        "color": color,
+        "remaining_seconds": remaining_seconds,
+    })
+
+
+def make_player_reconnected(username: str, color: str) -> str:
+    """Server → Client: a disconnected player has reconnected."""
+    return encode_message("player_reconnected", {
+        "username": username,
         "color": color,
     })
 

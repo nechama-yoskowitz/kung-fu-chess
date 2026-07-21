@@ -22,12 +22,16 @@ from game.server.protocol import (
     make_matchmaking_cancelled,
     make_matchmaking_started,
     make_matchmaking_timeout,
+    make_player_disconnected,
+    make_player_reconnected,
     make_rating_updated,
+    make_reconnect_countdown,
     make_room_created,
     make_room_joined,
     validate_login_request,
 )
 from game.server.rating.rating_service import RatingService
+from game.server.reconnect_manager import ReconnectManager
 from game.server.room_manager import RoomManager
 
 logger = logging.getLogger(__name__)
@@ -50,7 +54,8 @@ class GameWebSocketServer:
                  user_service: UserService | None = None,
                  rating_service: RatingService | None = None,
                  matchmaking: MatchmakingService | None = None,
-                 session_manager: GameSessionManager | None = None):
+                 session_manager: GameSessionManager | None = None,
+                 reconnect_manager: ReconnectManager | None = None):
         self.host = host
         self.port = port
         self.user_service = user_service
@@ -58,6 +63,7 @@ class GameWebSocketServer:
         self.matchmaking = matchmaking or MatchmakingService()
         self.session_manager = session_manager or GameSessionManager()
         self.room_manager = RoomManager(self.session_manager)
+        self.reconnect_manager = reconnect_manager or ReconnectManager()
         self._server = None
         # Tracks authenticated clients: websocket → {"username": str, "rating": int}
         self._authenticated: dict = {}
@@ -65,6 +71,8 @@ class GameWebSocketServer:
         self._connected: set = set()
         # Matchmaking poll task
         self._matchmaking_task: asyncio.Task | None = None
+        # Reconnect poll task
+        self._reconnect_task: asyncio.Task | None = None
 
         # Backward compatibility: if a pre-built session is provided,
         # register it in the manager (supports existing tests).
@@ -83,6 +91,7 @@ class GameWebSocketServer:
         for session in self.session_manager._sessions.values():
             await session.start_tick_loop()
         self._matchmaking_task = asyncio.create_task(self._matchmaking_loop())
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
         logger.info(f"Server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
@@ -91,6 +100,12 @@ class GameWebSocketServer:
             self._matchmaking_task.cancel()
             try:
                 await self._matchmaking_task
+            except asyncio.CancelledError:
+                pass
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
             except asyncio.CancelledError:
                 pass
         # Stop all active session tick loops
@@ -128,14 +143,37 @@ class GameWebSocketServer:
             self._cleanup_client(websocket)
 
     def _cleanup_client(self, websocket) -> None:
-        """Remove client from all server state on disconnect."""
+        """Handle client disconnect — start reconnect for players, clean up viewers."""
         self._connected.discard(websocket)
         self.matchmaking.remove_by_websocket(websocket)
-        self._authenticated.pop(websocket, None)
-        # Remove from their room (cleans up empty rooms)
-        self.room_manager.remove_player(websocket)
-        # Remove from their game session
+        auth = self._authenticated.pop(websocket, None)
+
+        # Check if this was an active player in a game session (not a viewer)
         session = self.session_manager.get_session_for_client(websocket)
+        if session and not session.is_viewer(websocket) and not session.engine.game_over:
+            color = session.get_player_color(websocket)
+            username = session.get_player_username(websocket) or (auth["username"] if auth else None)
+            session_id = self.session_manager.get_session_id(session)
+            room = self.room_manager.get_room_for_client(websocket)
+            room_id = room.room_id if room else None
+
+            if username and color and session_id:
+                # Start reconnect reservation
+                self.reconnect_manager.start_reconnect(
+                    username=username,
+                    color=color,
+                    room_id=room_id,
+                    session_id=session_id,
+                )
+                # Notify remaining session members
+                msg = make_player_disconnected(username, color, 20)
+                session._queue_broadcast(msg)
+                # Remove websocket routing but keep the session/room slot reserved
+                self.session_manager.remove_client(websocket)
+                return
+
+        # Viewer or no active game — normal cleanup
+        self.room_manager.remove_client(websocket)
         if session:
             session.remove_client(websocket)
         self.session_manager.remove_client(websocket)
@@ -206,6 +244,11 @@ class GameWebSocketServer:
             "rating": rating,
         }
 
+        # Check for pending reconnect
+        pending = self.reconnect_manager.try_reconnect(canonical_username)
+        if pending:
+            return self._handle_reconnect(sender, pending, canonical_username, rating)
+
         # If there's a legacy single session, assign directly (backward compat for tests)
         if self.session is not None:
             messages = self.session.login_client(sender, canonical_username, rating=rating)
@@ -218,6 +261,48 @@ class GameWebSocketServer:
         # They should use play_request to enter matchmaking.
         from game.server.protocol import make_login_success
         return make_login_success(username=canonical_username, color="", rating=rating)
+
+    def _handle_reconnect(self, websocket, pending, username: str, rating: int) -> str | list[str]:
+        """Restore a reconnecting player to their original session and color."""
+        session = self.session_manager.get_session_by_id(pending.session_id)
+        if session is None or session.engine.game_over:
+            self.reconnect_manager.cancel(username)
+            return make_error("game no longer available", "reconnect_failed")
+
+        # Cancel the reconnect timer
+        self.reconnect_manager.cancel(username)
+
+        # Re-register in the session with the original color
+        session.add_client(websocket)
+        session._player_colors[websocket] = pending.color
+        session._player_usernames[websocket] = username
+
+        # Restore session manager routing
+        self.session_manager.assign_client_to_session(websocket, session)
+
+        # Restore room membership if applicable
+        if pending.room_id:
+            room = self.room_manager.get_room(pending.room_id)
+            if room and websocket not in room.players:
+                room.players.append(websocket)
+
+        # Notify other players/viewers
+        msg = make_player_reconnected(username, pending.color)
+        session._queue_broadcast(msg)
+
+        # Send current game state to the reconnected player
+        from game.server.protocol import make_game_state, make_login_success
+        messages = [
+            make_login_success(username=username, color=pending.color, rating=rating),
+            make_game_state(
+                board=session.engine.board,
+                clock=session.engine.clock,
+                white_score=session.engine.white_score,
+                black_score=session.engine.black_score,
+                game_over=session.engine.game_over,
+            ),
+        ]
+        return messages
 
     async def _handle_play_request(self, sender) -> str:
         """Add authenticated player to matchmaking queue."""
@@ -407,6 +492,49 @@ class GameWebSocketServer:
             session._queue_broadcast(loser_msg)
 
         session.engine.event_bus.subscribe(GameEnded, on_game_ended)
+
+    async def _reconnect_loop(self) -> None:
+        """Periodically check for expired reconnect deadlines and trigger auto-resign."""
+        while True:
+            await asyncio.sleep(1.0)
+            await self._process_reconnect_expirations()
+
+    async def _process_reconnect_expirations(self) -> None:
+        """Handle expired reconnect records — auto-resign the disconnected player."""
+        expired = self.reconnect_manager.get_expired()
+        for record in expired:
+            session = self.session_manager.get_session_by_id(record.session_id)
+            if session is None or session.engine.game_over:
+                continue
+
+            # Determine winner (the opponent still connected)
+            winner_color = "b" if record.color == "w" else "w"
+            loser_color = record.color
+
+            # End the game authoritatively
+            from game.server.protocol import make_game_ended
+            msg = make_game_ended(winner=winner_color, loser=loser_color)
+            session.engine.game_over = True
+            session._queue_broadcast(msg)
+
+            # Update ratings via RatingService
+            if self.rating_service:
+                winner_username = None
+                for ws, color in session._player_colors.items():
+                    if color == winner_color:
+                        winner_username = session._player_usernames.get(ws)
+                        break
+
+                if winner_username:
+                    session_id = record.session_id
+                    self.rating_service.process_game_end(
+                        game_id=session_id,
+                        winner_username=winner_username,
+                        loser_username=record.username,
+                    )
+
+            # Drain broadcasts to connected clients
+            await session.drain_outbox()
 
     @property
     def client_count(self) -> int:
