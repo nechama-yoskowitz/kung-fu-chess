@@ -19,20 +19,10 @@ from game.graphics.sprites.sprite_manager import SpriteManager
 from game.history.move_history_observer import MoveHistoryObserver
 from game.controller.board_mapper import BoardMapper
 from game.model.constants import COOLDOWN_DURATION_MS
+from game.model.starting_position import make_starting_board
 from game.sound.sound_observer import SoundObserver
 from game.sound.sound_player import SoundPlayer
 
-
-STARTING_BOARD = [
-    ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
-    ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
-    ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
-]
 
 BOARD_IMAGE_PATH = "game/graphics/assets/board.png"
 PIECES_ROOT_PATH = "game/graphics/assets/pieces"
@@ -51,7 +41,7 @@ class GameApplication:
 
     def __init__(self):
         self.engine = GameEngine(
-            [row[:] for row in STARTING_BOARD]
+            make_starting_board()
         )
 
         self.renderer = Renderer(BOARD_IMAGE_PATH)

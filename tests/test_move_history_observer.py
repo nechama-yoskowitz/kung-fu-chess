@@ -6,8 +6,13 @@ builds accurate entries, and prevents duplicates.
 """
 
 from game.events import EventBus, MoveResolved
+from game.events.engine_events import MoveOutcome
 from game.history.move_history_observer import MoveHistoryObserver
 from game.history.move_entry import MoveEntry
+from game.model.piece import (
+    WHITE_ROOK, WHITE_PAWN, WHITE_KNIGHT, WHITE_QUEEN,
+    BLACK_PAWN, BLACK_KNIGHT, BLACK_QUEEN, PieceColor,
+)
 
 
 def _make_observer(clock_ms=0):
@@ -26,7 +31,7 @@ class TestSubscription:
     def test_receives_arrived_event(self):
         bus, obs, clock = _make_observer(clock_ms=3000)
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=3, promoted_to=None, captured_piece=None,
         ))
         assert len(obs.white_moves) == 1
@@ -34,7 +39,7 @@ class TestSubscription:
     def test_receives_black_event(self):
         bus, obs, clock = _make_observer(clock_ms=5000)
         bus.publish(MoveResolved(
-            sequence_id=1, piece="bN", outcome="arrived",
+            sequence_id=1, piece=BLACK_KNIGHT, outcome=MoveOutcome.ARRIVED,
             final_row=2, final_col=2, promoted_to=None, captured_piece=None,
         ))
         assert len(obs.black_moves) == 1
@@ -47,7 +52,7 @@ class TestOneEventOneEntry:
     def test_single_event_single_entry(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
+            sequence_id=0, piece=WHITE_PAWN, outcome=MoveOutcome.ARRIVED,
             final_row=4, final_col=4, promoted_to=None, captured_piece=None,
         ))
         assert len(obs.white_entries) == 1
@@ -61,17 +66,17 @@ class TestMultipleMovesOrder:
         bus, obs, clock = _make_observer()
         clock[0] = 1000
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
+            sequence_id=0, piece=WHITE_PAWN, outcome=MoveOutcome.ARRIVED,
             final_row=5, final_col=0, promoted_to=None, captured_piece=None,
         ))
         clock[0] = 2000
         bus.publish(MoveResolved(
-            sequence_id=1, piece="wR", outcome="arrived",
+            sequence_id=1, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=3, promoted_to=None, captured_piece=None,
         ))
         clock[0] = 3000
         bus.publish(MoveResolved(
-            sequence_id=2, piece="wN", outcome="arrived",
+            sequence_id=2, piece=WHITE_KNIGHT, outcome=MoveOutcome.ARRIVED,
             final_row=2, final_col=2, promoted_to=None, captured_piece=None,
         ))
         assert len(obs.white_entries) == 3
@@ -87,7 +92,7 @@ class TestTimestamps:
         bus, obs, clock = _make_observer()
         clock[0] = 4105
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
+            sequence_id=0, piece=WHITE_PAWN, outcome=MoveOutcome.ARRIVED,
             final_row=4, final_col=4, promoted_to=None, captured_piece=None,
         ))
         entry = obs.white_entries[0]
@@ -101,21 +106,21 @@ class TestPromotionRecording:
     def test_promotion_in_description(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ", captured_piece=None,
+            sequence_id=0, piece=WHITE_PAWN, outcome=MoveOutcome.ARRIVED,
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN, captured_piece=None,
         ))
         entry = obs.white_entries[0]
-        assert entry.promoted_to == "wQ"
+        assert entry.promoted_to == WHITE_QUEEN
         assert "Queen" in entry.description
 
     def test_promotion_entry_fields(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=5, piece="bP", outcome="arrived",
-            final_row=7, final_col=3, promoted_to="bQ", captured_piece=None,
+            sequence_id=5, piece=BLACK_PAWN, outcome=MoveOutcome.ARRIVED,
+            final_row=7, final_col=3, promoted_to=BLACK_QUEEN, captured_piece=None,
         ))
         entry = obs.black_entries[0]
-        assert entry.promoted_to == "bQ"
+        assert entry.promoted_to == BLACK_QUEEN
         assert entry.final_row == 7
         assert entry.final_col == 3
 
@@ -126,11 +131,11 @@ class TestStoppedMoveRecording:
     def test_stopped_description(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="stopped",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.STOPPED,
             final_row=3, final_col=5, promoted_to=None, captured_piece=None,
         ))
         entry = obs.white_entries[0]
-        assert entry.outcome == "stopped"
+        assert entry.outcome == MoveOutcome.STOPPED
         assert "stopped" in entry.description
         assert "(3,5)" in entry.description
 
@@ -141,21 +146,21 @@ class TestCapturedMoveRecording:
     def test_captured_description(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="captured",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.CAPTURED,
             final_row=None, final_col=None, promoted_to=None, captured_piece=None,
         ))
         entry = obs.white_entries[0]
-        assert entry.outcome == "captured"
+        assert entry.outcome == MoveOutcome.CAPTURED
         assert "captured" in entry.description
 
     def test_capture_info_recorded(self):
         bus, obs, clock = _make_observer()
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
-            final_row=0, final_col=3, promoted_to=None, captured_piece="bQ",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
+            final_row=0, final_col=3, promoted_to=None, captured_piece=BLACK_QUEEN,
         ))
         entry = obs.white_entries[0]
-        assert entry.captured_piece == "bQ"
+        assert entry.captured_piece == BLACK_QUEEN
         assert "Queen" in entry.description
 
 
@@ -175,7 +180,7 @@ class TestBothObserversReceiveEvent:
         )
 
         event = MoveResolved(
-            sequence_id=7, piece="wR", outcome="arrived",
+            sequence_id=7, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=5, promoted_to=None, captured_piece=None,
         )
         bus.publish(event)
@@ -192,7 +197,7 @@ class TestNoDuplicateEntries:
     def test_duplicate_event_ignored(self):
         bus, obs, clock = _make_observer()
         event = MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=3, promoted_to=None, captured_piece=None,
         )
         bus.publish(event)
@@ -207,7 +212,7 @@ class TestUIReadInterface:
     def test_white_moves_dict_format(self):
         bus, obs, clock = _make_observer(clock_ms=2500)
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=3, promoted_to=None, captured_piece=None,
         ))
         moves = obs.white_moves

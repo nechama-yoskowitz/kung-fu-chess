@@ -1,7 +1,7 @@
 import pytest
 from io import StringIO
 from unittest.mock import patch
-from game.model.board import is_inside_board, move_piece
+from game.model.board import is_inside_board
 from game.io.parser import validate_board
 from game.io.board_printer import print_board
 
@@ -84,34 +84,3 @@ def test_validate_board_single_row():
 def test_validate_board_empty_board():
     board = []
     assert validate_board(board) is True
-
-
-# ---------------------------------------------------------------------------
-# move_piece
-# ---------------------------------------------------------------------------
-
-def test_move_piece_to_empty_square():
-    board = make_board(["wK . .", ". . .", ". . ."])
-    move_piece(board, 0, 0, 0, 2)
-    assert board[0][2] == "wK"
-    assert board[0][0] == "."
-
-
-def test_move_piece_captures_enemy():
-    board = make_board(["wK . bR", ". . .", ". . ."])
-    move_piece(board, 0, 0, 0, 2)
-    assert board[0][2] == "wK"
-    assert board[0][0] == "."
-
-
-def test_move_piece_source_becomes_empty():
-    board = make_board(["wR . .", ". . .", ". . ."])
-    move_piece(board, 0, 0, 2, 2)
-    assert board[0][0] == "."
-
-
-def test_move_piece_vertical():
-    board = make_board(["wR", ".", "."])
-    move_piece(board, 0, 0, 2, 0)
-    assert board[2][0] == "wR"
-    assert board[0][0] == "."

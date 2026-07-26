@@ -12,6 +12,8 @@ from game.events import EventBus
 from game.events.engine_events import GameEnded, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.pieces.piece_state_machine import PieceStateMachine
+from game.model.constants import DEFAULT_RATING
+from game.server.reconnect_manager import RECONNECT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,7 @@ class ServerMessageProcessor:
     def _on_login_success(self, payload: dict) -> None:
         color = payload.get("color", "")
         username = payload.get("username", "")
-        rating = payload.get("rating", 1200)
+        rating = payload.get("rating", DEFAULT_RATING)
         self._state.apply_login_success(color or None, username, rating)
 
     def _on_game_state(self, payload: dict) -> None:
@@ -185,14 +187,16 @@ class ServerMessageProcessor:
 
         # Publish MoveResolved for sound/history observers
         if self._event_bus:
+            from game.events.engine_events import MoveOutcome
+            from game.model.board_adapter import to_domain_piece
             self._event_bus.publish(MoveResolved(
                 sequence_id=seq_id or 0,
-                piece=piece,
-                outcome=outcome or "arrived",
+                piece=to_domain_piece(piece),
+                outcome=MoveOutcome(outcome or "arrived"),
                 final_row=final_row,
                 final_col=final_col,
-                promoted_to=promoted_to,
-                captured_piece=captured_piece,
+                promoted_to=to_domain_piece(promoted_to),
+                captured_piece=to_domain_piece(captured_piece),
             ))
 
     def _reconcile_cell(self, row: int, col: int, survivor=None) -> None:
@@ -257,7 +261,12 @@ class ServerMessageProcessor:
         self._state.game_end_reason = reason
 
         if self._event_bus:
-            self._event_bus.publish(GameEnded(winner=winner, loser=loser))
+            from game.model.piece import PieceColor
+            _STR_TO_COLOR = {"w": PieceColor.WHITE, "b": PieceColor.BLACK}
+            self._event_bus.publish(GameEnded(
+                winner=_STR_TO_COLOR.get(winner, PieceColor.WHITE),
+                loser=_STR_TO_COLOR.get(loser, PieceColor.BLACK),
+            ))
 
     def _on_rating_updated(self, payload: dict) -> None:
         username = payload.get("username")
@@ -297,7 +306,7 @@ class ServerMessageProcessor:
         """A player disconnected — store for display."""
         username = payload.get("username", "")
         color = payload.get("color", "")
-        remaining = payload.get("remaining_seconds", 20)
+        remaining = payload.get("remaining_seconds", int(RECONNECT_TIMEOUT))
         self._state.apply_player_disconnected(username, color, remaining)
 
     def _on_reconnect_countdown(self, payload: dict) -> None:

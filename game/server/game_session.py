@@ -13,9 +13,11 @@ import logging
 from collections import deque
 
 from game.engine.game_engine import GameEngine
-from game.events.engine_events import GameEnded, MoveResolved
+from game.events.engine_events import GameEnded, MoveOutcome, MoveResolved
 from game.model.board_adapter import to_legacy_piece
+from game.model.constants import DEFAULT_RATING
 from game.model.pieces import get_color
+from game.model.starting_position import make_starting_board
 from game.server.protocol import (
     decode_message,
     encode_message,
@@ -35,17 +37,6 @@ from game.server.protocol import (
 
 logger = logging.getLogger(__name__)
 
-STARTING_BOARD = [
-    ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
-    ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    [".", ".", ".", ".", ".", ".", ".", "."],
-    ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
-    ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
-]
-
 TICK_INTERVAL_MS = 50
 MAX_PLAYERS = 2
 
@@ -59,7 +50,7 @@ class GameSession:
     """
 
     def __init__(self, board=None):
-        self._board = board or [row[:] for row in STARTING_BOARD]
+        self._board = board or make_starting_board()
         self.engine = GameEngine(self._board)
         self._clients: set = set()
         self._player_colors: dict = {}  # websocket → "w" | "b"
@@ -83,7 +74,7 @@ class GameSession:
         """
         self._clients.add(websocket)
 
-    def login_client(self, websocket, username: str, rating: int = 1200) -> list[str]:
+    def login_client(self, websocket, username: str, rating: int = DEFAULT_RATING) -> list[str]:
         """
         Attempt to log in a connected client with the given username.
 
@@ -329,7 +320,7 @@ class GameSession:
         msg = make_move_resolved(
             sequence_id=event.sequence_id,
             piece=to_legacy_piece(event.piece),
-            outcome=event.outcome,
+            outcome=event.outcome.value,
             final_row=event.final_row,
             final_col=event.final_col,
             promoted_to=to_legacy_piece(event.promoted_to) if event.promoted_to else None,
@@ -340,13 +331,8 @@ class GameSession:
     def _on_game_ended(self, event: GameEnded) -> None:
         """Queue a game_ended broadcast (synchronous EventBus callback)."""
         from game.model.piece import PieceColor
-        winner = event.winner
-        loser = event.loser
-        # Convert PieceColor to protocol strings if needed
-        if isinstance(winner, PieceColor):
-            winner = "w" if winner == PieceColor.WHITE else "b"
-        if isinstance(loser, PieceColor):
-            loser = "w" if loser == PieceColor.WHITE else "b"
+        winner = "w" if event.winner == PieceColor.WHITE else "b"
+        loser = "w" if event.loser == PieceColor.WHITE else "b"
         msg = make_game_ended(winner=winner, loser=loser)
         self._queue_broadcast(msg)
 

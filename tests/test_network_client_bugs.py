@@ -15,9 +15,10 @@ from game.client.server_message_processor import ServerMessageProcessor
 from game.controller.controller import Controller
 from game.controller.game_gateway import MoveRequestResult
 from game.events import EventBus
-from game.events.engine_events import MoveResolved
+from game.events.engine_events import MoveOutcome, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.history.move_history_observer import MoveHistoryObserver
+from game.model.piece import WHITE_ROOK, BLACK_PAWN, BLACK_KNIGHT
 from game.controller.board_mapper import BoardMapper
 
 
@@ -339,7 +340,7 @@ class TestNetworkMoveHistory:
         history = MoveHistoryObserver(event_bus=bus, clock_provider=lambda: 5000.0)
 
         bus.publish(MoveResolved(
-            sequence_id=1, piece="wR", outcome="arrived",
+            sequence_id=1, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=2,
             promoted_to=None, captured_piece=None,
         ))
@@ -390,7 +391,7 @@ class TestNetworkMoveHistory:
         history = MoveHistoryObserver(event_bus=bus, clock_provider=lambda: 1000.0)
 
         event = MoveResolved(
-            sequence_id=5, piece="bP", outcome="arrived",
+            sequence_id=5, piece=BLACK_PAWN, outcome=MoveOutcome.ARRIVED,
             final_row=3, final_col=0,
             promoted_to=None, captured_piece=None,
         )
@@ -405,9 +406,9 @@ class TestNetworkMoveHistory:
         history = MoveHistoryObserver(event_bus=bus, clock_provider=lambda: 2000.0)
 
         bus.publish(MoveResolved(
-            sequence_id=10, piece="wR", outcome="arrived",
+            sequence_id=10, piece=WHITE_ROOK, outcome=MoveOutcome.ARRIVED,
             final_row=0, final_col=3,
-            promoted_to=None, captured_piece="bN",
+            promoted_to=None, captured_piece=BLACK_KNIGHT,
         ))
 
         assert len(history.white_moves) == 1

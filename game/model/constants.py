@@ -54,3 +54,6 @@ PIECE_VALUES = {
     PieceType.QUEEN:  9,
     PieceType.KING:   0,
 }
+
+# Default Elo rating for new players.
+DEFAULT_RATING = 1200

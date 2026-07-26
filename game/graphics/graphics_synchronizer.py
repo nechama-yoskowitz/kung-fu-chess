@@ -1,4 +1,4 @@
-from game.events.engine_events import MoveResolved
+from game.events.engine_events import MoveOutcome, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.pieces.piece_state_machine import PieceStateMachine
 from game.model.board_adapter import to_legacy_board
@@ -133,7 +133,7 @@ class GraphicsSynchronizer:
         if gp is None:
             return
 
-        if event.outcome == "captured":
+        if event.outcome == MoveOutcome.CAPTURED:
             if gp in self.graphics_manager.graphic_pieces:
                 self.graphics_manager.remove_piece(gp)
             return

@@ -5,7 +5,7 @@ the appropriate sound via SoundPlayer.
 Does not contain game logic. Only maps events to sound file names.
 """
 
-from game.events.engine_events import GameEnded, MoveResolved
+from game.events.engine_events import GameEnded, MoveOutcome, MoveResolved
 from game.sound.sound_player import SoundPlayer
 
 # Sound file names — actual .wav files expected under the sounds_root directory.
@@ -36,7 +36,7 @@ class SoundObserver:
                 self._player.play(SOUND_PROMOTION)
             elif event.captured_piece:
                 self._player.play(SOUND_CAPTURE)
-            elif event.outcome in ("arrived", "stopped"):
+            elif event.outcome in (MoveOutcome.ARRIVED, MoveOutcome.STOPPED):
                 self._player.play(SOUND_MOVE)
         except Exception:
             pass

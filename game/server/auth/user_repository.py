@@ -7,6 +7,7 @@ No business logic, no hashing, no validation beyond what SQL enforces.
 
 import sqlite3
 
+from game.model.constants import DEFAULT_RATING
 from game.server.auth.user_record import UserRecord
 
 _SCHEMA_SQL = """
@@ -78,7 +79,7 @@ class UserRepository:
         self,
         username: str,
         password_hash: str,
-        rating: int = 1200,
+        rating: int = DEFAULT_RATING,
     ) -> UserRecord:
         """
         Insert a new user and return the created record.

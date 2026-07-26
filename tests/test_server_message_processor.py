@@ -8,6 +8,7 @@ from game.client.client_game_state import ClientGameState
 from game.client.server_message_processor import ServerMessageProcessor
 from game.events import EventBus, GameEnded, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
+from game.model.piece import PieceColor
 
 
 def _make_mock_gm():
@@ -205,7 +206,7 @@ class TestGameEnded:
 
         assert state.game_over is True
         assert len(received) == 1
-        assert received[0].winner == "w"
+        assert received[0].winner == PieceColor.WHITE
 
 
 class TestGameFull:

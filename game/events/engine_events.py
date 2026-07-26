@@ -6,6 +6,21 @@ don't need to infer outcomes from state diffs.
 """
 
 from dataclasses import dataclass
+from enum import Enum
+
+from game.model.piece import Piece, PieceColor
+
+
+class MoveOutcome(str, Enum):
+    """
+    Possible outcomes when a PendingMove is resolved.
+
+    Inherits from str so that serialization to JSON produces the bare
+    string value ("arrived", "stopped", "captured") without extra conversion.
+    """
+    ARRIVED = "arrived"
+    STOPPED = "stopped"
+    CAPTURED = "captured"
 
 
 @dataclass(frozen=True)
@@ -17,28 +32,27 @@ class MoveResolved:
     ----------
     sequence_id : int
         Unique identifier matching the original PendingMove.
-    piece : str
-        The original piece token (e.g. "wR", "bP").
-    outcome : str
-        One of: "arrived", "stopped", "captured".
+    piece : Piece
+        The original piece that was moving.
+    outcome : MoveOutcome
+        Resolution result.
     final_row : int | None
         Row where the piece ended up (None if captured).
     final_col : int | None
         Column where the piece ended up (None if captured).
-    promoted_to : str | None
-        New piece token if promotion occurred (e.g. "wQ"), else None.
-    captured_piece : str | None
-        Token of the piece that was captured by this move (e.g. "bR"),
-        or None if no capture occurred.
+    promoted_to : Piece | None
+        New Piece if promotion occurred, else None.
+    captured_piece : Piece | None
+        The piece that was captured by this move, or None.
     """
 
     sequence_id: int
-    piece: str
-    outcome: str
+    piece: Piece
+    outcome: MoveOutcome
     final_row: int | None
     final_col: int | None
-    promoted_to: str | None
-    captured_piece: str | None = None
+    promoted_to: Piece | None
+    captured_piece: Piece | None = None
 
 
 @dataclass(frozen=True)
@@ -48,14 +62,14 @@ class GameEnded:
 
     Attributes
     ----------
-    winner : str
-        Color of the winning side ("w" or "b").
-    loser : str
-        Color of the losing side ("w" or "b").
+    winner : PieceColor
+        Color of the winning side.
+    loser : PieceColor
+        Color of the losing side.
     """
 
-    winner: str
-    loser: str
+    winner: PieceColor
+    loser: PieceColor
 
 
 @dataclass(frozen=True)

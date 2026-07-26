@@ -4,7 +4,7 @@ Client-side game state model — stores authoritative state received from the se
 Only updated from decoded server messages. Does not contain engine logic.
 """
 
-from game.model.constants import COOLDOWN_DURATION_MS, EMPTY_CELL
+from game.model.constants import COOLDOWN_DURATION_MS, DEFAULT_RATING, EMPTY_CELL
 
 
 def _empty_board(rows: int = 8, cols: int = 8) -> list[list[str]]:
@@ -50,7 +50,7 @@ class ClientGameState:
         self.player_color = color
         self.connected = True
 
-    def apply_login_success(self, color: str | None, username: str, rating: int = 1200) -> None:
+    def apply_login_success(self, color: str | None, username: str, rating: int = DEFAULT_RATING) -> None:
         """Update from a login_success message."""
         if color:
             self.player_color = color

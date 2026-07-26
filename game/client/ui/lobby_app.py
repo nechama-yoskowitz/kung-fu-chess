@@ -15,6 +15,7 @@ import time
 import threading
 
 from game.client.ui.network_client import NetworkClient
+from game.model.constants import DEFAULT_RATING
 
 
 class LobbyApp:
@@ -128,7 +129,7 @@ class LobbyApp:
                 self._client.state.apply_login_success(
                     payload.get("color") or None,
                     payload.get("username", ""),
-                    payload.get("rating", 1200),
+                    payload.get("rating", DEFAULT_RATING),
                 )
                 is_reconnect = payload.get("reconnected", False)
                 found_login = True

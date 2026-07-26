@@ -13,6 +13,7 @@ Does not own GameSession lifecycle — delegates to GameSessionManager.
 import uuid
 from dataclasses import dataclass, field
 
+from game.model.constants import DEFAULT_RATING
 from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
 
@@ -80,7 +81,7 @@ class RoomManager:
         """Look up a room by ID."""
         return self._rooms.get(room_id)
 
-    def join_room(self, room_id: str, websocket, username: str, rating: int = 1200) -> tuple[str | None, str]:
+    def join_room(self, room_id: str, websocket, username: str, rating: int = DEFAULT_RATING) -> tuple[str | None, str]:
         """
         Add a client to a room as player or viewer.
 

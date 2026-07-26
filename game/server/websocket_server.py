@@ -11,6 +11,7 @@ import logging
 
 import websockets
 
+from game.model.constants import DEFAULT_RATING
 from game.server.auth.user_service import UserService
 from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
@@ -31,7 +32,7 @@ from game.server.protocol import (
     validate_login_request,
 )
 from game.server.rating.rating_service import RatingService
-from game.server.reconnect_manager import ReconnectManager
+from game.server.reconnect_manager import ReconnectManager, RECONNECT_TIMEOUT
 from game.server.room_manager import RoomManager
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,7 @@ class GameWebSocketServer:
                 )
                 logger.info(f"Reconnect reservation: username={username} color={color} session={session_id}")
                 # Notify remaining session members
-                msg = make_player_disconnected(username, color, 20)
+                msg = make_player_disconnected(username, color, int(RECONNECT_TIMEOUT))
                 session._queue_broadcast(msg)
                 # Remove websocket routing but keep the session/room slot reserved
                 self.session_manager.remove_client(websocket)
@@ -244,7 +245,7 @@ class GameWebSocketServer:
             )
 
         canonical_username = result.user.username if result.user else username
-        rating = result.user.rating if result.user else 1200
+        rating = result.user.rating if result.user else DEFAULT_RATING
         logger.info(f"Login success: username={canonical_username} action={action} rating={rating}")
 
         # Track authenticated state

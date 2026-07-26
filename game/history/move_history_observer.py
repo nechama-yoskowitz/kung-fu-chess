@@ -3,21 +3,12 @@ Move history observer — subscribes to MoveResolved events and records
 authoritative move outcomes for display in side panels.
 """
 
-from game.events.engine_events import MoveResolved
+from game.events.engine_events import MoveOutcome, MoveResolved
 from game.history.move_entry import MoveEntry
 from game.model.piece import Piece, PieceColor, PieceType
 
 
-_PIECE_NAMES_STR = {
-    "K": "King",
-    "Q": "Queen",
-    "R": "Rook",
-    "B": "Bishop",
-    "N": "Knight",
-    "P": "Pawn",
-}
-
-_PIECE_NAMES_TYPE = {
+_PIECE_NAMES = {
     PieceType.KING: "King",
     PieceType.QUEEN: "Queen",
     PieceType.ROOK: "Rook",
@@ -25,24 +16,6 @@ _PIECE_NAMES_TYPE = {
     PieceType.KNIGHT: "Knight",
     PieceType.PAWN: "Pawn",
 }
-
-
-def _get_piece_name(piece):
-    """Get human-readable name from Piece object or legacy string."""
-    if isinstance(piece, Piece):
-        return _PIECE_NAMES_TYPE.get(piece.type, str(piece))
-    if isinstance(piece, str) and len(piece) >= 2:
-        return _PIECE_NAMES_STR.get(piece[1], piece)
-    return str(piece)
-
-
-def _get_color(piece):
-    """Get color string ('w'/'b') from Piece object or legacy string."""
-    if isinstance(piece, Piece):
-        return "w" if piece.color == PieceColor.WHITE else "b"
-    if isinstance(piece, str) and len(piece) >= 2:
-        return piece[0]
-    return "w"
 
 
 class MoveHistoryObserver:
@@ -83,7 +56,7 @@ class MoveHistoryObserver:
         self._seen_sequence_ids.add(event.sequence_id)
 
         clock_ms = self._clock_provider()
-        color = _get_color(event.piece)
+        color = event.piece.color
         description = self._build_description(event)
         time_display = self._format_time(clock_ms)
 
@@ -101,29 +74,29 @@ class MoveHistoryObserver:
             time_display=time_display,
         )
 
-        if color == "w":
+        if color == PieceColor.WHITE:
             self._white_moves.append(entry)
         else:
             self._black_moves.append(entry)
 
     @staticmethod
     def _build_description(event: MoveResolved) -> str:
-        piece_name = _get_piece_name(event.piece)
+        piece_name = _PIECE_NAMES.get(event.piece.type, str(event.piece))
 
-        if event.outcome == "captured":
+        if event.outcome == MoveOutcome.CAPTURED:
             return f"{piece_name} captured"
 
-        if event.outcome == "stopped":
+        if event.outcome == MoveOutcome.STOPPED:
             return f"{piece_name} stopped at ({event.final_row},{event.final_col})"
 
         desc = f"{piece_name} -> ({event.final_row},{event.final_col})"
 
         if event.promoted_to:
-            promoted_name = _get_piece_name(event.promoted_to)
+            promoted_name = _PIECE_NAMES.get(event.promoted_to.type, str(event.promoted_to))
             desc += f" = {promoted_name}"
 
         if event.captured_piece:
-            captured_name = _get_piece_name(event.captured_piece)
+            captured_name = _PIECE_NAMES.get(event.captured_piece.type, str(event.captured_piece))
             desc += f" x{captured_name}"
 
         return desc

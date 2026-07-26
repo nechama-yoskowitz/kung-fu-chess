@@ -1,6 +1,7 @@
 from game.model.constants import (
     MOVE_DURATION_MS,
 )
+from game.events.engine_events import MoveOutcome
 from game.model.piece import Piece, PieceColor, PieceType
 from game.model.pieces import get_color, is_king, is_pawn, same_color
 from game.realtime.motion import (
@@ -142,7 +143,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     for move in pending_moves:
         # If the piece is not at its source on the board, the move is invalid
         if board[move.from_row][move.from_col] != move.piece:
-            move_status[move.sequence_id] = "captured"  # pre-cancel
+            move_status[move.sequence_id] = MoveOutcome.CAPTURED  # pre-cancel
             continue
         vc = _current_virtual_cell(move, prev_clock)
         if vc not in occupancy:
@@ -195,7 +196,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
             occupancy[target] = {"piece": event.piece, "seq_id": seq_id, "airborne": False}
             move_prev_cell[seq_id] = target
             if event.is_final:
-                move_status[seq_id] = "arrived"
+                move_status[seq_id] = MoveOutcome.ARRIVED
                 move_final_cell[seq_id] = target
 
         elif occupant.get("airborne") and get_color(occupant["piece"]) != get_color(event.piece):
@@ -207,7 +208,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 game_over = True
                 game_over_time = event.event_time
 
-            move_status[seq_id] = "captured"
+            move_status[seq_id] = MoveOutcome.CAPTURED
             move_captured_piece[seq_id] = captured_piece
 
         elif occupant.get("airborne") and get_color(occupant["piece"]) == get_color(event.piece):
@@ -215,12 +216,12 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
             occupancy[target] = {"piece": event.piece, "seq_id": seq_id, "airborne": False}
             move_prev_cell[seq_id] = target
             if event.is_final:
-                move_status[seq_id] = "arrived"
+                move_status[seq_id] = MoveOutcome.ARRIVED
                 move_final_cell[seq_id] = target
 
         elif same_color(occupant["piece"], event.piece):
             # Same color ground piece — STOP at previous cell
-            move_status[seq_id] = "stopped"
+            move_status[seq_id] = MoveOutcome.STOPPED
             if prev_cell and prev_cell != (None, None):
                 move_final_cell[seq_id] = prev_cell
                 occupancy[prev_cell] = {"piece": event.piece, "seq_id": seq_id, "airborne": False}
@@ -232,7 +233,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
             captured_piece = occupant["piece"]
 
             if occupant["seq_id"] is not None:
-                move_status[occupant["seq_id"]] = "captured"
+                move_status[occupant["seq_id"]] = MoveOutcome.CAPTURED
             else:
                 captured_static_cells.append(target)
 
@@ -245,7 +246,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
             occupancy[target] = {"piece": event.piece, "seq_id": seq_id, "airborne": False}
             move_prev_cell[seq_id] = target
             if event.is_final:
-                move_status[seq_id] = "arrived"
+                move_status[seq_id] = MoveOutcome.ARRIVED
                 move_final_cell[seq_id] = target
 
     # --- Apply results to board ---
@@ -255,7 +256,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     # Phase 1: Clear sources of all non-active moves
     for move in pending_moves:
         status = move_status[move.sequence_id]
-        if status in ("arrived", "stopped", "captured"):
+        if status in (MoveOutcome.ARRIVED, MoveOutcome.STOPPED, MoveOutcome.CAPTURED):
             if board[move.from_row][move.from_col] == move.piece:
                 board[move.from_row][move.from_col] = None
 
@@ -267,7 +268,7 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     # Phase 3: Place arrived/stopped pieces and build resolution data
     for move in pending_moves:
         status = move_status[move.sequence_id]
-        if status in ("arrived", "stopped"):
+        if status in (MoveOutcome.ARRIVED, MoveOutcome.STOPPED):
             final = move_final_cell.get(move.sequence_id)
             if final:
                 fr, fc = final
@@ -302,11 +303,11 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                     "promoted_to": None,
                     "captured_piece": move_captured_piece.get(move.sequence_id),
                 })
-        elif status == "captured":
+        elif status == MoveOutcome.CAPTURED:
             resolved_moves.append({
                 "sequence_id": move.sequence_id,
                 "piece": move.piece,
-                "outcome": "captured",
+                "outcome": MoveOutcome.CAPTURED,
                 "final_row": None,
                 "final_col": None,
                 "promoted_to": None,

@@ -17,6 +17,8 @@ import json
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from game.model.constants import DEFAULT_RATING
+
 PROTOCOL_VERSION = 1
 
 
@@ -109,7 +111,7 @@ def make_login_request(username: str, password: str, action: str = "login") -> s
     })
 
 
-def make_login_success(username: str, color: str, rating: int = 1200,
+def make_login_success(username: str, color: str, rating: int = DEFAULT_RATING,
                        reconnected: bool = False) -> str:
     """Server → Client: login accepted, color assigned, rating included."""
     return encode_message("login_success", {
