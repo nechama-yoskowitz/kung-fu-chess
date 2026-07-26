@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from typing import Union
 
+from game.model.piece import Piece, PieceType
 from game.model.pieces import get_type
 from game.model.constants import PIECE_KNIGHT
 
@@ -8,7 +10,7 @@ from game.model.constants import PIECE_KNIGHT
 class PendingMove:
     """A move that started but has not reached its destination yet."""
 
-    piece: str
+    piece: Union[Piece, str]
     from_row: int
     from_col: int
     to_row: int
@@ -22,7 +24,7 @@ class PendingMove:
 class ActiveJump:
     """A piece that is currently airborne."""
 
-    piece: str
+    piece: Union[Piece, str]
     row: int
     col: int
     expires_at: int
@@ -57,7 +59,7 @@ def get_airborne_piece_at(active_jumps, row, col):
 class ActiveCooldown:
     """A piece that is resting after arriving at its destination."""
 
-    piece: str
+    piece: Union[Piece, str]
     row: int
     col: int
     available_at: int
@@ -67,8 +69,9 @@ def is_piece_resting(active_cooldowns, row, col, board):
     """
     Return True if a resting piece occupies the given cell.
 
-    Checks that the piece token still matches the board to avoid
+    Checks that the piece still matches the board to avoid
     'orphaned' cooldowns after a capture.
+    Supports both Piece objects and legacy string tokens.
     """
     for cd in active_cooldowns:
         if cd.row == row and cd.col == col:
@@ -99,7 +102,13 @@ def compute_path(piece, from_row, from_col, to_row, to_col):
     For king/pawn (1-step): just [destination].
     For pawn (2-step): [intermediate, destination].
     """
-    if get_type(piece) == PIECE_KNIGHT:
+    # Support both Piece objects and legacy string tokens
+    if isinstance(piece, Piece):
+        is_knight = piece.type == PieceType.KNIGHT
+    else:
+        is_knight = get_type(piece) == PIECE_KNIGHT
+
+    if is_knight:
         return [(to_row, to_col)]
 
     row_step = _sign(to_row - from_row)
@@ -127,7 +136,7 @@ class MovementEvent:
 
     Attributes:
         sequence_id: stable identifier for the PendingMove (tie-breaker).
-        piece:       the piece token.
+        piece:       the piece (Piece object or legacy string token).
         row:         row of the cell being entered.
         col:         column of the cell being entered.
         event_time:  clock time at which the piece arrives at this cell.
@@ -136,7 +145,7 @@ class MovementEvent:
     """
 
     sequence_id: int
-    piece: str
+    piece: Union[Piece, str]
     row: int
     col: int
     event_time: int

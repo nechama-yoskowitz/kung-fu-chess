@@ -14,6 +14,7 @@ from collections import deque
 
 from game.engine.game_engine import GameEngine
 from game.events.engine_events import GameEnded, MoveResolved
+from game.model.board_adapter import to_legacy_piece
 from game.model.pieces import get_color
 from game.server.protocol import (
     decode_message,
@@ -265,7 +266,7 @@ class GameSession:
         pm = self.engine.pending_moves[-1]
         accepted_msg = make_move_accepted(
             sequence_id=pm.sequence_id,
-            piece=pm.piece,
+            piece=to_legacy_piece(pm.piece),
             from_row=pm.from_row,
             from_col=pm.from_col,
             to_row=pm.to_row,
@@ -297,7 +298,7 @@ class GameSession:
 
         jump = self.engine.active_jumps[-1]
         accepted_msg = make_jump_accepted(
-            piece=jump.piece,
+            piece=to_legacy_piece(jump.piece),
             row=jump.row,
             col=jump.col,
             expires_at=jump.expires_at,
@@ -327,18 +328,26 @@ class GameSession:
         """Queue a move_resolved broadcast (synchronous EventBus callback)."""
         msg = make_move_resolved(
             sequence_id=event.sequence_id,
-            piece=event.piece,
+            piece=to_legacy_piece(event.piece),
             outcome=event.outcome,
             final_row=event.final_row,
             final_col=event.final_col,
-            promoted_to=event.promoted_to,
-            captured_piece=event.captured_piece,
+            promoted_to=to_legacy_piece(event.promoted_to) if event.promoted_to else None,
+            captured_piece=to_legacy_piece(event.captured_piece) if event.captured_piece else None,
         )
         self._queue_broadcast(msg)
 
     def _on_game_ended(self, event: GameEnded) -> None:
         """Queue a game_ended broadcast (synchronous EventBus callback)."""
-        msg = make_game_ended(winner=event.winner, loser=event.loser)
+        from game.model.piece import PieceColor
+        winner = event.winner
+        loser = event.loser
+        # Convert PieceColor to protocol strings if needed
+        if isinstance(winner, PieceColor):
+            winner = "w" if winner == PieceColor.WHITE else "b"
+        if isinstance(loser, PieceColor):
+            loser = "w" if loser == PieceColor.WHITE else "b"
+        msg = make_game_ended(winner=winner, loser=loser)
         self._queue_broadcast(msg)
 
     def _make_game_state(self) -> str:

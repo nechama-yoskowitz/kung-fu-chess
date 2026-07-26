@@ -3,6 +3,7 @@ from game.model.constants import (
     MOVE_DURATION_MS,
     PIECE_QUEEN,
 )
+from game.model.piece import Piece, PieceColor, PieceType
 from game.model.pieces import get_color, is_king, is_pawn, make_piece, same_color
 from game.realtime.motion import (
     compute_path,
@@ -10,6 +11,29 @@ from game.realtime.motion import (
     get_airborne_piece_at,
 )
 from game.rules.rules import pawn_promotion_row
+
+
+def _is_domain_board(board):
+    """Detect if a board uses domain Piece|None format vs legacy strings."""
+    for row in board:
+        for cell in row:
+            if isinstance(cell, Piece):
+                return True
+            if cell is None:
+                return True
+            if isinstance(cell, str) and cell != EMPTY_CELL:
+                return False
+            if cell == EMPTY_CELL:
+                return False
+    # All-empty board — treat as domain (None)
+    return True
+
+
+def _empty_cell(board):
+    """Return the appropriate empty sentinel for this board's mode."""
+    if _is_domain_board(board):
+        return None
+    return EMPTY_CELL
 
 
 def expire_jumps(active_jumps, clock):
@@ -115,15 +139,19 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
     for move in pending_moves:
         moving_sources.add((move.from_row, move.from_col))
 
-    # occupancy: (row, col) → {"piece": str, "seq_id": int|None, "airborne": bool}
+    # occupancy: (row, col) → {"piece": Piece|str, "seq_id": int|None, "airborne": bool}
     occupancy = {}
+
+    # Determine the empty sentinel for this board
+    empty = _empty_cell(board)
 
     for r in range(len(board)):
         for c in range(len(board[0])):
             if (r, c) in moving_sources:
                 continue
-            if board[r][c] != EMPTY_CELL:
-                occupancy[(r, c)] = {"piece": board[r][c], "seq_id": None, "airborne": False}
+            cell = board[r][c]
+            if cell is not None and cell != EMPTY_CELL:
+                occupancy[(r, c)] = {"piece": cell, "seq_id": None, "airborne": False}
 
     # Add airborne pieces
     for jump in active_jumps:
@@ -257,12 +285,12 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
         status = move_status[move.sequence_id]
         if status in ("arrived", "stopped", "captured"):
             if board[move.from_row][move.from_col] == move.piece:
-                board[move.from_row][move.from_col] = EMPTY_CELL
+                board[move.from_row][move.from_col] = empty
 
     # Phase 2: Clear captured static cells
     for (r, c) in captured_static_cells:
         if (r, c) not in move_final_cell.values():
-            board[r][c] = EMPTY_CELL
+            board[r][c] = empty
 
     # Phase 3: Place arrived/stopped pieces and build resolution data
     for move in pending_moves:
@@ -278,8 +306,13 @@ def _resolve_window(board, pending_moves, prev_clock, curr_clock, active_jumps):
                 if is_pawn(move.piece) and not (captured and is_king(captured)):
                     color = get_color(move.piece)
                     if fr == pawn_promotion_row(board, color):
-                        board[fr][fc] = make_piece(color, PIECE_QUEEN)
-                        promoted_to = board[fr][fc]
+                        # Create promoted piece — support both Piece and legacy string
+                        if isinstance(move.piece, Piece):
+                            promoted = Piece(move.piece.color, PieceType.QUEEN)
+                        else:
+                            promoted = make_piece(color, PIECE_QUEEN)
+                        board[fr][fc] = promoted
+                        promoted_to = promoted
                 landed_piece = board[fr][fc]
                 arrived_cells.append((landed_piece, fr, fc))
                 resolved_moves.append({

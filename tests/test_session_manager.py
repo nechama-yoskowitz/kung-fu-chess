@@ -112,7 +112,7 @@ class TestMultipleSimultaneousGames:
 
         # Session 2 board is unchanged
         assert s2.engine.board[6][0] == "wP"
-        assert s2.engine.board[5][0] == "."
+        assert s2.engine.board[5][0] is None
 
     def test_players_routed_to_correct_session(self):
         mgr = GameSessionManager()

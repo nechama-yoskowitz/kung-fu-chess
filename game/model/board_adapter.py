@@ -36,9 +36,10 @@ def to_legacy_board(board: list[list]) -> list[list[str]]:
 
 def to_domain_board(board: list[list]) -> list[list]:
     """
-    Convert a legacy string board to a domain board (Piece|None).
+    Convert a legacy string board to a domain board (Piece|None) IN-PLACE.
 
     If the board already contains Piece objects (during migration), returns as-is.
+    Mutates the original list so that existing references see domain objects.
     """
     if not board:
         return board
@@ -46,7 +47,11 @@ def to_domain_board(board: list[list]) -> list[list]:
     first_row = board[0]
     if first_row and (first_row[0] is None or isinstance(first_row[0], Piece)):
         return board  # Already domain — no conversion needed
-    return parse_board(board)
+    # Convert in-place so callers holding a reference to board see the change
+    for r, row in enumerate(board):
+        for c, cell in enumerate(row):
+            row[c] = parse_token(cell)
+    return board
 
 
 def to_legacy_piece(piece) -> str:

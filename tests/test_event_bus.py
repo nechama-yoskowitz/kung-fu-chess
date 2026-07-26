@@ -196,7 +196,7 @@ class TestMoveResolvedPublishedByEngine:
         assert len(board_snapshots) == 1
         # Board should show wR at (0,2) when the event fires
         assert board_snapshots[0][2] == "wR"
-        assert board_snapshots[0][0] == "."
+        assert board_snapshots[0][0] is None
 
 
 class TestEventBusUnsubscribe:

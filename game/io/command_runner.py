@@ -16,7 +16,7 @@ def process_commands(board, commands):
             if not engine.game_over:
                 engine.update_game_state()
 
-            print_board(board)
+            print_board(engine.legacy_board)
 
         elif parts[0] == "click":
             if engine.game_over:

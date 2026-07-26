@@ -34,7 +34,9 @@ class TestBoardAdapterConversion:
 
     def test_roundtrip_legacy(self):
         original = [["wR", ".", "bK"], [".", "wP", "."]]
-        assert to_legacy_board(to_domain_board(original)) == original
+        expected = [["wR", ".", "bK"], [".", "wP", "."]]
+        domain = to_domain_board(original)  # in-place conversion
+        assert to_legacy_board(domain) == expected
 
     def test_roundtrip_domain(self):
         original = [[WHITE_ROOK, None, BLACK_KING]]
@@ -80,19 +82,25 @@ class TestEngineLegacyBoard:
         assert legacy[0][1] == "."
 
     def test_engine_board_is_internal(self):
-        """Engine.board is the internal representation (still strings during migration)."""
+        """Engine.board is the internal domain representation (Piece|None)."""
         board = [["wR", ".", ".", "bK"]]
         engine = GameEngine(board)
-        # During migration, internal board is still strings
-        # After full migration, this would contain Piece objects
-        assert engine.board is board
+        # After migration, internal board contains Piece objects and None
+        assert engine.board is board  # in-place conversion preserves reference
+        assert isinstance(engine.board[0][0], Piece)
+        assert engine.board[0][1] is None
 
     def test_legacy_board_matches_board_content(self):
-        """legacy_board content matches the internal board."""
+        """legacy_board content matches the internal board in string format."""
         board = [
             ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
             ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
             [".", ".", ".", ".", ".", ".", ".", "."],
         ]
+        expected_legacy = [
+            ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
+            ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
+            [".", ".", ".", ".", ".", ".", ".", "."],
+        ]
         engine = GameEngine(board)
-        assert engine.legacy_board == board
+        assert engine.legacy_board == expected_legacy

@@ -5,6 +5,7 @@ from game.io.command_runner import process_commands
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
+from game.model.piece import WHITE_ROOK
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +121,7 @@ def test_click_legal_move_returns_pending_move():
     assert result is True
     assert len(engine.pending_moves) == 1
     move = engine.pending_moves[0]
-    assert move.piece == "wR"
+    assert move.piece == WHITE_ROOK
     assert move.to_col == 2
     assert move.arrive_at == 2 * MOVE_DURATION_MS
 
@@ -133,7 +134,7 @@ def test_click_legal_move_does_not_mutate_board():
     ctrl.click(200, 0)
     # board must be unchanged until the move arrives
     assert board[0][0] == "wR"
-    assert board[0][2] == "."
+    assert board[0][2] is None
 
 
 def test_click_illegal_move_returns_no_pending_move():

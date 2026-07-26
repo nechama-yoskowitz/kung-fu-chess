@@ -53,8 +53,8 @@ def test_same_color_same_destination_later_stops_before():
     # seq=1 sees same-color at (0,2) → stops at (0,3)
     assert board[0][2] == "wR"
     assert board[0][3] == "wR"
-    assert board[0][0] == "."
-    assert board[0][4] == "."
+    assert board[0][0] is None
+    assert board[0][4] is None
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_opposite_color_cross_paths_later_captures():
     engine.handle_wait(7 * MOVE_DURATION_MS)
     # wR captures bR mid-path and continues to destination
     assert board[0][7] == "wR"
-    assert board[0][0] == "."
+    assert board[0][0] is None
 
 
 def test_opposite_color_capture_mid_path_captured_piece_gone():
@@ -98,7 +98,7 @@ def test_opposite_color_capture_mid_path_captured_piece_gone():
     # t=4: wR→(0,4). t=5: wR→(0,5) arrived.
     engine.handle_wait(5 * MOVE_DURATION_MS)
     assert board[0][5] == "wR"
-    assert board[0][0] == "."   # bR never arrived
+    assert board[0][0] is None   # bR never arrived
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ def test_captured_piece_does_not_arrive():
     engine.request_move(0, 0, 0, 5)   # wR, seq=0
     engine.request_move(0, 5, 0, 0)   # bR, seq=1
     engine.handle_wait(5 * MOVE_DURATION_MS)
-    assert board[0][0] == "."   # bR captured mid-path
+    assert board[0][0] is None   # bR captured mid-path
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ def test_large_wait_processes_all():
     engine.request_move(0, 0, 0, 7)  # 7 cells, arrives at t=7000
     engine.handle_wait(10000)  # way past arrival
     assert board[0][7] == "wR"
-    assert board[0][0] == "."
+    assert board[0][0] is None
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_captured_static_piece_removed():
     engine.request_move(0, 0, 0, 3)   # wR → col 3 where bP is (valid — destination capture)
     engine.handle_wait(3 * MOVE_DURATION_MS)
     assert board[0][3] == "wR"    # wR captured bP
-    assert board[0][0] == "."
+    assert board[0][0] is None
 
 
 # ---------------------------------------------------------------------------

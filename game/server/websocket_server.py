@@ -387,7 +387,7 @@ class GameWebSocketServer:
         if role == "player" and room.is_full:
             from game.server.protocol import make_game_state
             game_state_msg = make_game_state(
-                board=room.session.engine.board,
+                board=room.session.engine.legacy_board,
                 clock=room.session.engine.clock,
                 white_score=room.session.engine.white_score,
                 black_score=room.session.engine.black_score,
@@ -400,7 +400,7 @@ class GameWebSocketServer:
         if role == "viewer":
             from game.server.protocol import make_game_state
             messages.append(make_game_state(
-                board=room.session.engine.board,
+                board=room.session.engine.legacy_board,
                 clock=room.session.engine.clock,
                 white_score=room.session.engine.white_score,
                 black_score=room.session.engine.black_score,
@@ -493,7 +493,7 @@ class GameWebSocketServer:
         # Broadcast initial game_state to both players so clients can start
         from game.server.protocol import make_game_state
         game_state_msg = make_game_state(
-            board=session.engine.board,
+            board=session.engine.legacy_board,
             clock=session.engine.clock,
             white_score=session.engine.white_score,
             black_score=session.engine.black_score,

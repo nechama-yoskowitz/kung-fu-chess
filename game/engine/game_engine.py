@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from game.events import EventBus
 from game.events.engine_events import GameEnded, MoveResolved
 from game.model.constants import PIECE_VALUES
-from game.model.board_adapter import to_legacy_board
+from game.model.board_adapter import to_domain_board, to_legacy_board
+from game.model.piece import Piece, PieceColor
 from game.model.pieces import get_color, get_type, is_king
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
@@ -31,7 +32,7 @@ class GameEngine:
     """
 
     def __init__(self, board, event_bus=None):
-        self.board = board
+        self.board: list[list[Piece | None]] = to_domain_board(board)
         self.game_over = False
         self.event_bus = event_bus or EventBus()
         self.rule_engine = RuleEngine()
@@ -205,7 +206,11 @@ class GameEngine:
         # Track king capture for GameEnded event (published later by _transition_to_game_over)
         if is_king(event.captured_piece):
             loser = captured_color
-            winner = "w" if loser == "b" else "b"
+            # captured_color may be PieceColor or legacy string — normalize
+            if isinstance(loser, PieceColor):
+                winner = PieceColor.WHITE if loser == PieceColor.BLACK else PieceColor.BLACK
+            else:
+                winner = "w" if loser == "b" else "b"
             self._pending_game_end = (winner, loser)
             return  # King has value 0, no score update needed
 
@@ -214,7 +219,14 @@ class GameEngine:
         if value == 0:
             return
 
-        if captured_color == "b":
-            self._white_score += value
+        # captured_color may be PieceColor or legacy string — handle both
+        if isinstance(captured_color, PieceColor):
+            if captured_color == PieceColor.BLACK:
+                self._white_score += value
+            else:
+                self._black_score += value
         else:
-            self._black_score += value
+            if captured_color == "b":
+                self._white_score += value
+            else:
+                self._black_score += value

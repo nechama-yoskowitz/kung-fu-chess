@@ -1,6 +1,7 @@
 from game.events.engine_events import MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.pieces.piece_state_machine import PieceStateMachine
+from game.model.board_adapter import to_legacy_board
 
 
 class GraphicsSynchronizer:
@@ -26,7 +27,7 @@ class GraphicsSynchronizer:
 
     def initialize(self, board) -> None:
         """Read the current board state and populate the graphics layer."""
-        self.graphics_manager.initialize_from_board(board)
+        self.graphics_manager.initialize_from_board(to_legacy_board(board))
         self._synced_sequence_ids.clear()
         self._active_movements.clear()
         self._active_jumps.clear()
@@ -142,7 +143,8 @@ class GraphicsSynchronizer:
 
         # Promotion — update piece token and reload animation.
         if event.promoted_to:
-            gp.promote_to(event.promoted_to)
+            from game.model.board_adapter import to_legacy_piece
+            gp.promote_to(to_legacy_piece(event.promoted_to))
 
     @staticmethod
     def get_cooldown_indicators(active_cooldowns, clock, cooldown_duration_ms):

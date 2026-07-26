@@ -19,7 +19,7 @@ class GraphicsManager:
 
         for row, board_row in enumerate(board):
             for col, piece in enumerate(board_row):
-                if piece == ".":
+                if piece is None or piece == ".":
                     continue
 
                 graphic_piece = GraphicPiece(
