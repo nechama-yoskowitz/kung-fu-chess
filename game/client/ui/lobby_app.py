@@ -222,22 +222,35 @@ class LobbyApp:
             return
 
         messages = self._client.poll_messages()
+        match_found = False
+        game_state_payload = None
+
         for msg in messages:
             msg_type = msg.get("type", "")
             payload = msg.get("payload", {})
 
             if msg_type == "match_found":
                 self._client.state.apply_match_found(payload)
-                self._home_status.config(text="Match found! Starting game...")
-                self._root.after(100, self._wait_for_game_state)
-                return
+                match_found = True
+                continue  # Keep scanning for game_state in same batch
             elif msg_type == "matchmaking_timeout":
                 self._home_status.config(text="No opponent found. Try again.")
                 return
             elif msg_type == "game_state":
-                self._apply_game_state(payload)
-                self._start_game()
-                return
+                game_state_payload = payload
+                break
+
+        if game_state_payload:
+            self._apply_game_state(game_state_payload)
+            if match_found:
+                self._home_status.config(text="Match found! Starting game...")
+            self._start_game()
+            return
+
+        if match_found:
+            self._home_status.config(text="Match found! Starting game...")
+            self._root.after(100, self._wait_for_game_state)
+            return
 
         if time.monotonic() > self._mm_deadline:
             self._home_status.config(text="Matchmaking timed out.")

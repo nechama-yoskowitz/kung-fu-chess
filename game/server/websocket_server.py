@@ -490,6 +490,18 @@ class GameWebSocketServer:
         except Exception:
             pass
 
+        # Broadcast initial game_state to both players so clients can start
+        from game.server.protocol import make_game_state
+        game_state_msg = make_game_state(
+            board=session.engine.board,
+            clock=session.engine.clock,
+            white_score=session.engine.white_score,
+            black_score=session.engine.black_score,
+            game_over=session.engine.game_over,
+        )
+        session._queue_broadcast(game_state_msg)
+        await session.drain_outbox()
+
     def _subscribe_rating_updates(self, session: GameSession, session_id: str) -> None:
         """Subscribe to GameEnded on a session's engine for rating updates."""
         from game.events.engine_events import GameEnded
