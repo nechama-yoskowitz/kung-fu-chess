@@ -17,7 +17,7 @@ class LocalGameGateway(GameCommandGateway):
 
     @property
     def board(self) -> list[list[str]]:
-        return self._engine.board
+        return self._engine.legacy_board
 
     def is_piece_moving_at(self, row: int, col: int) -> bool:
         return self._engine.is_piece_moving_at(row, col)

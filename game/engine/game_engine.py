@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from game.events import EventBus
 from game.events.engine_events import GameEnded, MoveResolved
 from game.model.constants import PIECE_VALUES
+from game.model.board_adapter import to_legacy_board
 from game.model.pieces import get_color, get_type, is_king
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.rules.rule_engine import RuleEngine
@@ -40,6 +41,11 @@ class GameEngine:
         self._pending_game_end: tuple[str, str] | None = None  # (winner, loser)
 
         self.event_bus.subscribe(MoveResolved, self._on_move_resolved)
+
+    @property
+    def legacy_board(self) -> list[list[str]]:
+        """Board in legacy string format for graphics/network/client boundaries."""
+        return to_legacy_board(self.board)
 
     # Read-only properties delegating to the arbiter.
 

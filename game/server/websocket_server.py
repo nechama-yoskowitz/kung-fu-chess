@@ -306,7 +306,7 @@ class GameWebSocketServer:
         messages = [
             make_login_success(username=username, color=pending.color, rating=rating, reconnected=True),
             make_game_state(
-                board=session.engine.board,
+                board=session.engine.legacy_board,
                 clock=session.engine.clock,
                 white_score=session.engine.white_score,
                 black_score=session.engine.black_score,

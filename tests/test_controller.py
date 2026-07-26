@@ -39,6 +39,10 @@ class FakeEngine:
         self.last_move_request = None
         self.last_jump_request = None
 
+    @property
+    def legacy_board(self):
+        return self.board
+
     def is_piece_moving_at(self, row, col):
         return (row, col) in self._moving_cells
 

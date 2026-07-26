@@ -315,7 +315,7 @@ class GameSession:
         if player_color is None:
             return make_move_rejected("not_assigned", row, col, row, col)
 
-        board = self.engine.board
+        board = self.engine.legacy_board
         if 0 <= row < len(board) and 0 <= col < len(board[0]):
             piece = board[row][col]
             if piece != "." and get_color(piece) != player_color:
@@ -343,7 +343,7 @@ class GameSession:
 
     def _make_game_state(self) -> str:
         return make_game_state(
-            board=self.engine.board,
+            board=self.engine.legacy_board,
             clock=self.engine.clock,
             white_score=self.engine.white_score,
             black_score=self.engine.black_score,

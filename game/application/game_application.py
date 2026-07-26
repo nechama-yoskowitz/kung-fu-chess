@@ -89,7 +89,7 @@ class GameApplication:
             self.graphics_manager,
             event_bus=self.engine.event_bus,
         )
-        self.synchronizer.initialize(self.engine.board)
+        self.synchronizer.initialize(self.engine.legacy_board)
 
         self.gateway = LocalGameGateway(self.engine)
 
@@ -156,7 +156,7 @@ class GameApplication:
             graphics_manager=self.graphics_manager,
             synchronizer=self.synchronizer,
             pending_moves_provider=lambda: self.engine.pending_moves,
-            board_provider=lambda: self.engine.board,
+            board_provider=lambda: self.engine.legacy_board,
             active_jumps_provider=lambda: self.engine.active_jumps,
             engine_updater=lambda dt: self.engine.handle_wait(dt),
             mouse_input_adapter=self.mouse_input_adapter,
