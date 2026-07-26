@@ -1,4 +1,4 @@
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 from game.model.board import is_inside_board
 from game.model.pieces import same_color, is_empty, get_color
 

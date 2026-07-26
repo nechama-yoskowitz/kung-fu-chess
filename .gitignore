@@ -1,8 +1,12 @@
 __pycache__/
-*.pyc
+*.py[cod]
 .vscode/
 .pytest_cache/
 .coverage
+htmlcov/
+
+# Database files
+*.db
 
 # Log files
 logs/

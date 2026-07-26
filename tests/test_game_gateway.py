@@ -11,7 +11,7 @@ from game.controller.controller import Controller
 from game.controller.game_gateway import GameCommandGateway, MoveRequestResult
 from game.controller.local_game_gateway import LocalGameGateway
 from game.engine.game_engine import GameEngine
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 from game.model.constants import MOVE_DURATION_MS
 
 

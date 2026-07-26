@@ -18,7 +18,7 @@ from game.events import EventBus
 from game.events.engine_events import MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.history.move_history_observer import MoveHistoryObserver
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 
 
 def make_state_with_board(board, player_color="w"):

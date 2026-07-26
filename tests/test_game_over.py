@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.graphics.mouse_input_adapter import MouseInputAdapter
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 from game.model.constants import MOVE_DURATION_MS
 
 

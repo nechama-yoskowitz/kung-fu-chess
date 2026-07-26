@@ -1,5 +1,5 @@
 import pytest
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 
 
 @pytest.fixture

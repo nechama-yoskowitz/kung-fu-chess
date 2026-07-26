@@ -17,7 +17,7 @@ from game.graphics.mouse_input_adapter import MouseInputAdapter
 from game.graphics.renderer import Renderer
 from game.graphics.sprites.sprite_manager import SpriteManager
 from game.history.move_history_observer import MoveHistoryObserver
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 from game.model.constants import COOLDOWN_DURATION_MS
 from game.sound.sound_observer import SoundObserver
 from game.sound.sound_player import SoundPlayer

@@ -6,7 +6,7 @@ and click delegation.
 import pytest
 from unittest.mock import MagicMock, patch
 
-from game.model.board_mapper import BoardMapper
+from game.controller.board_mapper import BoardMapper
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.graphics.mouse_input_adapter import MouseInputAdapter

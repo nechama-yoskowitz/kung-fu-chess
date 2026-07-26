@@ -1,3 +1,11 @@
+"""
+Legacy text-mode entry point for the original Kung-Fu Chess assignment.
+
+Reads a board and move commands from stdin, processes them, and prints results.
+This interface is NOT used by the graphical or network modes.
+Use run_game.py for the graphical game or python -m game.server for the server.
+"""
+
 import sys
 
 from game.io.parser import GameInputParser, validate_board
