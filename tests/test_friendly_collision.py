@@ -12,6 +12,7 @@ from game.engine.game_engine import GameEngine
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import WHITE_ROOK, WHITE_KNIGHT, WHITE_BISHOP, BLACK_ROOK, BLACK_KING
 from game.realtime.motion import PendingMove
 
 

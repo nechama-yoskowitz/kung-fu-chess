@@ -104,6 +104,7 @@ class GraphicsSynchronizer:
         was captured by an arriving enemy. Moving pieces are handled by
         MoveResolved events, not by this method.
         """
+        from game.model.board_adapter import to_legacy_piece
         to_remove = []
         for gp in self.graphics_manager.graphic_pieces:
             if gp.is_moving:
@@ -112,7 +113,7 @@ class GraphicsSynchronizer:
             if (
                 0 <= gp.row < len(board)
                 and 0 <= gp.col < len(board[0])
-                and board[gp.row][gp.col] == gp.piece
+                and to_legacy_piece(board[gp.row][gp.col]) == gp.piece
             ):
                 continue
 

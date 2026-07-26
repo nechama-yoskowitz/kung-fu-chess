@@ -15,20 +15,6 @@ class PieceColor(Enum):
     WHITE = "white"
     BLACK = "black"
 
-    def __eq__(self, other):
-        if isinstance(other, PieceColor):
-            return self.value == other.value
-        # --- TEMPORARY: allow comparison with legacy "w"/"b" strings during migration ---
-        if isinstance(other, str):
-            if other == "w":
-                return self is PieceColor.WHITE
-            if other == "b":
-                return self is PieceColor.BLACK
-        return NotImplemented
-
-    def __hash__(self):
-        return hash(self.value)
-
 
 class PieceType(Enum):
     """The type of a chess piece."""
@@ -40,7 +26,7 @@ class PieceType(Enum):
     PAWN = "pawn"
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class Piece:
     """
     Immutable domain representation of a chess piece.
@@ -49,21 +35,6 @@ class Piece:
     """
     color: PieceColor
     type: PieceType
-
-    def __eq__(self, other):
-        if isinstance(other, Piece):
-            return self.color == other.color and self.type == other.type
-        # --- TEMPORARY: allow comparison with legacy string tokens during migration ---
-        if isinstance(other, str) and len(other) == 2:
-            from game.io.piece_token_codec import _COLOR_MAP, _TYPE_MAP
-            expected_color = _COLOR_MAP.get(other[0])
-            expected_type = _TYPE_MAP.get(other[1])
-            if expected_color is not None and expected_type is not None:
-                return self.color == expected_color and self.type == expected_type
-        return NotImplemented
-
-    def __hash__(self):
-        return hash((self.color, self.type))
 
     @property
     def is_white(self) -> bool:

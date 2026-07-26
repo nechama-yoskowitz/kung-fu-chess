@@ -6,22 +6,18 @@ events (stops, promotions, friendly collisions) do not affect score.
 """
 
 from game.engine.game_engine import GameEngine
+from game.io.piece_token_codec import parse_board
 from game.model.constants import MOVE_DURATION_MS
-
-
-def _make_board(layout):
-    """Create a board from a list of row strings."""
-    return [row.split() for row in layout]
 
 
 class TestPawnCapture:
     def test_pawn_capture_adds_1(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", "."],
             [".", "bP", ".", "."],
             ["wP", ".", ".", "."],
             [".", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         # wP captures bP diagonally
         engine.request_move(2, 0, 1, 1)
@@ -33,7 +29,7 @@ class TestPawnCapture:
 class TestKnightCapture:
     def test_knight_capture_adds_3(self):
         # wR at (0,0) captures bN at (0,3) directly
-        board = [["wR", ".", ".", "bN"]]
+        board = parse_board([["wR", ".", ".", "bN"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -42,7 +38,7 @@ class TestKnightCapture:
 
 class TestBishopCapture:
     def test_bishop_capture_adds_3(self):
-        board = [["wR", ".", ".", "bB"]]
+        board = parse_board([["wR", ".", ".", "bB"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -51,7 +47,7 @@ class TestBishopCapture:
 
 class TestRookCapture:
     def test_rook_capture_adds_5(self):
-        board = [["wR", ".", ".", "bR"]]
+        board = parse_board([["wR", ".", ".", "bR"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -61,7 +57,7 @@ class TestRookCapture:
 
 class TestQueenCapture:
     def test_queen_capture_adds_9(self):
-        board = [["wR", ".", ".", "bQ"]]
+        board = parse_board([["wR", ".", ".", "bQ"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -70,7 +66,7 @@ class TestQueenCapture:
 
 class TestKingCapture:
     def test_king_capture_adds_0_and_ends_game(self):
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -80,9 +76,9 @@ class TestKingCapture:
 
 class TestMultipleCaptures:
     def test_accumulation(self):
-        board = [
+        board = parse_board([
             ["wR", ".", "bP", ".", "bP", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         # Capture first pawn at (0,2)
         engine.request_move(0, 0, 0, 2)
@@ -99,10 +95,10 @@ class TestMultipleCaptures:
 
 class TestFriendlyCollisionNoScore:
     def test_friendly_stop_no_score(self):
-        board = [
+        board = parse_board([
             ["wR", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", "wR", ".", ".", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.request_move(1, 2, 0, 2)
@@ -113,9 +109,9 @@ class TestFriendlyCollisionNoScore:
 
 class TestStoppedMoveNoScore:
     def test_stopped_no_score(self):
-        board = [
+        board = parse_board([
             ["wR", ".", ".", "wB", ".", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         # wR can't move through wB, so rule engine blocks this
         result = engine.request_move(0, 0, 0, 5)
@@ -126,10 +122,10 @@ class TestStoppedMoveNoScore:
 
 class TestPromotionNoScore:
     def test_promotion_alone_no_score(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", ".", ".", ".", "."],
             ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         engine.request_move(1, 0, 0, 0)
         engine.handle_wait(MOVE_DURATION_MS + 1)
@@ -139,7 +135,7 @@ class TestPromotionNoScore:
 
 class TestNoCaptureCountedTwice:
     def test_single_capture_single_score(self):
-        board = [["wR", ".", ".", "bR"]]
+        board = parse_board([["wR", ".", ".", "bR"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
 
@@ -153,7 +149,7 @@ class TestNoCaptureCountedTwice:
 class TestScoreAfterGameOver:
     def test_score_remains_after_game_over(self):
         # wR captures bP then bK in a row
-        board = [["wR", ".", "bP", ".", ".", "bK", ".", "."]]
+        board = parse_board([["wR", ".", "bP", ".", ".", "bK", ".", "."]])
         engine = GameEngine(board)
         # Capture bP at (0,2)
         engine.request_move(0, 0, 0, 2)
@@ -172,7 +168,7 @@ class TestScoreAfterGameOver:
 
 class TestBlackCaptures:
     def test_black_captures_white(self):
-        board = [["bR", ".", ".", "wR"]]
+        board = parse_board([["bR", ".", ".", "wR"]])
         engine = GameEngine(board)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)

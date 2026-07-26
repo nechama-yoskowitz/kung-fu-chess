@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
 from game.graphics.pieces.piece_state_machine import PieceStateMachine
+from game.model.piece import WHITE_ROOK, WHITE_BISHOP, WHITE_KNIGHT, BLACK_ROOK
 from game.realtime.motion import ActiveJump
 
 
@@ -44,7 +45,7 @@ class TestJumpStartsExactlyOnce:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         gp = gm.graphic_pieces[0]
@@ -56,7 +57,7 @@ class TestJumpStartsExactlyOnce:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         sprite_mgr = gm.sprite_manager
@@ -78,7 +79,7 @@ class TestJumpAppliedToCorrectPiece:
         sync.initialize(init_board)
 
         # Only the bishop at (0,1) jumps
-        jumps = [ActiveJump(piece="wB", row=0, col=1, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_BISHOP, row=0, col=1, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         assert gm.get_piece_at(0, 0).state == PieceStateMachine.IDLE
@@ -95,7 +96,7 @@ class TestJumpPositionUnchanged:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         gp = gm.graphic_pieces[0]
@@ -114,7 +115,7 @@ class TestJumpAnimationAdvances:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         gp = gm.graphic_pieces[0]
@@ -136,7 +137,7 @@ class TestJumpExpiration:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         assert gm.graphic_pieces[0].state == PieceStateMachine.JUMP
@@ -152,7 +153,7 @@ class TestJumpExpiration:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
         sync.sync_jumps([])
 
@@ -171,8 +172,8 @@ class TestMultipleJumps:
         sync.initialize(init_board)
 
         jumps = [
-            ActiveJump(piece="wR", row=0, col=0, expires_at=1000),
-            ActiveJump(piece="wB", row=0, col=1, expires_at=1500),
+            ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000),
+            ActiveJump(piece=WHITE_BISHOP, row=0, col=1, expires_at=1500),
         ]
         sync.sync_jumps(jumps)
 
@@ -186,13 +187,13 @@ class TestMultipleJumps:
         sync.initialize(init_board)
 
         jumps = [
-            ActiveJump(piece="wR", row=0, col=0, expires_at=1000),
-            ActiveJump(piece="wB", row=0, col=1, expires_at=1500),
+            ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000),
+            ActiveJump(piece=WHITE_BISHOP, row=0, col=1, expires_at=1500),
         ]
         sync.sync_jumps(jumps)
 
         # Only wB remains jumping
-        remaining = [ActiveJump(piece="wB", row=0, col=1, expires_at=1500)]
+        remaining = [ActiveJump(piece=WHITE_BISHOP, row=0, col=1, expires_at=1500)]
         sync.sync_jumps(remaining)
 
         assert gm.get_piece_at(0, 0).state == PieceStateMachine.IDLE
@@ -208,7 +209,7 @@ class TestCapturedJumpingPiece:
         sync = GraphicsSynchronizer(gm)
         sync.initialize(init_board)
 
-        jumps = [ActiveJump(piece="wR", row=0, col=0, expires_at=1000)]
+        jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=0, expires_at=1000)]
         sync.sync_jumps(jumps)
 
         # Piece is removed (captured by engine)

@@ -12,6 +12,8 @@ from game.events import EventBus
 from game.events.engine_events import GameEnded, MoveResolved
 from game.history.move_history_observer import MoveHistoryObserver
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import BLACK_KING, BLACK_ROOK, WHITE_KING, WHITE_QUEEN, WHITE_PAWN, BLACK_PAWN, PieceColor
+from game.io.piece_token_codec import parse_board
 
 
 class TestPawnCapturesKingOnPromotionRow:
@@ -42,7 +44,7 @@ class TestPawnCapturesKingOnPromotionRow:
         engine.request_move(1, 0, 0, 1)
         engine.handle_wait(MOVE_DURATION_MS + 1)
 
-        assert winners == ["w"]
+        assert winners == [PieceColor.WHITE]
 
     def test_captured_piece_is_king(self):
         board = [
@@ -58,7 +60,7 @@ class TestPawnCapturesKingOnPromotionRow:
 
         assert len(resolved) >= 1
         capture_event = resolved[0]
-        assert capture_event.captured_piece == "bK"
+        assert capture_event.captured_piece == BLACK_KING
 
     def test_no_promotion_occurs(self):
         board = [
@@ -116,8 +118,8 @@ class TestPawnCapturesKingOnPromotionRow:
         engine.handle_wait(MOVE_DURATION_MS + 1)
 
         assert engine.game_over is True
-        assert winners == ["b"]
-        assert resolved[0].captured_piece == "wK"
+        assert winners == [PieceColor.BLACK]
+        assert resolved[0].captured_piece == WHITE_KING
         assert resolved[0].promoted_to is None
 
 
@@ -137,9 +139,9 @@ class TestPawnCapturesNonKingOnPromotionRow:
         engine.handle_wait(MOVE_DURATION_MS + 1)
 
         event = resolved[0]
-        assert event.captured_piece == "bR"
-        assert event.promoted_to == "wQ"
-        assert engine.board[0][1] == "wQ"
+        assert event.captured_piece == BLACK_ROOK
+        assert event.promoted_to == WHITE_QUEEN
+        assert engine.board[0][1] == WHITE_QUEEN
 
     def test_history_mentions_both_promotion_and_capture(self):
         board = [
@@ -176,9 +178,9 @@ class TestPawnPromotionWithoutCapture:
         engine.handle_wait(MOVE_DURATION_MS + 1)
 
         event = resolved[0]
-        assert event.promoted_to == "wQ"
+        assert event.promoted_to == WHITE_QUEEN
         assert event.captured_piece is None
-        assert engine.board[0][0] == "wQ"
+        assert engine.board[0][0] == WHITE_QUEEN
 
     def test_history_mentions_promotion(self):
         board = [

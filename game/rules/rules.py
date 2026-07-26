@@ -1,15 +1,9 @@
 from game.model.constants import (
     MOVEMENT_RULES,
     SLIDING_PIECES,
-    WHITE,
 )
 from game.model.piece import PieceColor
 from game.model.pieces import get_color, get_type, is_empty
-
-
-def _is_white(color):
-    """Check if a color value represents white (supports both PieceColor and legacy string)."""
-    return color == PieceColor.WHITE or color == WHITE
 
 
 def is_legal_move(piece, from_row, from_col, to_row, to_col):
@@ -37,7 +31,7 @@ def pawn_starting_row(board, color):
     White pawns start one row above the bottom edge.
     Black pawns start one row below the top edge.
     """
-    if _is_white(color):
+    if color == PieceColor.WHITE:
         return len(board) - 2
 
     return 1
@@ -45,7 +39,7 @@ def pawn_starting_row(board, color):
 
 def pawn_promotion_row(board, color):
     """Return the row a pawn must reach in order to be promoted."""
-    if _is_white(color):
+    if color == PieceColor.WHITE:
         return 0
 
     return len(board) - 1
@@ -65,7 +59,7 @@ def is_legal_pawn_move(
 
     target = board[to_row][to_col]
     color = get_color(piece)
-    direction = -1 if _is_white(color) else 1
+    direction = -1 if color == PieceColor.WHITE else 1
 
     # One square forward: the destination must be empty.
     if row_diff == direction and col_diff == 0:

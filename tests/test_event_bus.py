@@ -8,6 +8,8 @@ MoveResolved events with correct authoritative data.
 from game.events import EventBus, MoveResolved
 from game.engine.game_engine import GameEngine
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import WHITE_ROOK, WHITE_BISHOP, WHITE_QUEEN, BLACK_PAWN, BLACK_KING, PieceColor
+from game.io.piece_token_codec import parse_board
 
 
 class TestEventBusSubscribePublish:
@@ -19,7 +21,7 @@ class TestEventBusSubscribePublish:
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
         event = MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         )
         bus.publish(event)
@@ -35,7 +37,7 @@ class TestEventBusSubscribePublish:
         bus.subscribe(MoveResolved, lambda e: results_b.append(e))
 
         event = MoveResolved(
-            sequence_id=1, piece="wB", outcome="captured",
+            sequence_id=1, piece=WHITE_BISHOP, outcome="captured",
             final_row=None, final_col=None, promoted_to=None,
         )
         bus.publish(event)
@@ -46,7 +48,7 @@ class TestEventBusSubscribePublish:
     def test_no_listeners_no_crash(self):
         bus = EventBus()
         event = MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=0, promoted_to=None,
         )
         bus.publish(event)  # Should not raise
@@ -57,13 +59,13 @@ class TestEventBusSubscribePublish:
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
         bus.publish(MoveResolved(
-            sequence_id=42, piece="bP", outcome="stopped",
+            sequence_id=42, piece=BLACK_PAWN, outcome="stopped",
             final_row=5, final_col=3, promoted_to=None,
         ))
 
         e = received[0]
         assert e.sequence_id == 42
-        assert e.piece == "bP"
+        assert e.piece == BLACK_PAWN
         assert e.outcome == "stopped"
         assert e.final_row == 5
         assert e.final_col == 3
@@ -88,7 +90,7 @@ class TestMoveResolvedPublishedByEngine:
         bus = EventBus()
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "."]]
+        board = parse_board([["wR", ".", ".", "."]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 2)
         engine.handle_wait(2 * MOVE_DURATION_MS + 1)
@@ -105,10 +107,10 @@ class TestMoveResolvedPublishedByEngine:
 
         # Two rooks converging: wR1 from (0,0)→(0,3), wR2 from (1,2)→(0,2)
         # wR2 arrives at (0,2) first. wR1 stops at (0,1).
-        board = [
+        board = parse_board([
             ["wR", ".", ".", "."],
             [".", ".", "wR", "."],
-        ]
+        ])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)  # arrive=3000
         engine.request_move(1, 2, 0, 2)  # arrive=1000
@@ -126,7 +128,7 @@ class TestMoveResolvedPublishedByEngine:
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
         # bR captures wR
-        board = [["wR", ".", ".", "bR"]]
+        board = parse_board([["wR", ".", ".", "bR"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 2)  # wR → (0,2)
         engine.request_move(0, 3, 0, 0)  # bR → (0,0), passes through (0,2)
@@ -146,17 +148,17 @@ class TestMoveResolvedPublishedByEngine:
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
         # White pawn at row 1 moves to row 0 (promotion)
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", ".", ".", ".", "."],
             ["wP", ".", ".", ".", ".", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(1, 0, 0, 0)
         engine.handle_wait(MOVE_DURATION_MS + 1)
 
         arrived = [e for e in received if e.outcome == "arrived"]
         assert len(arrived) == 1
-        assert arrived[0].promoted_to == "wQ"
+        assert arrived[0].promoted_to == WHITE_QUEEN
         assert arrived[0].final_row == 0
         assert arrived[0].final_col == 0
 
@@ -165,7 +167,7 @@ class TestMoveResolvedPublishedByEngine:
         bus = EventBus()
         bus.subscribe(MoveResolved, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "."]]
+        board = parse_board([["wR", ".", ".", "."]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 2)
 
@@ -181,7 +183,7 @@ class TestMoveResolvedPublishedByEngine:
         board_snapshots = []
         bus = EventBus()
 
-        board = [["wR", ".", ".", "."]]
+        board = parse_board([["wR", ".", ".", "."]])
         engine = GameEngine(board, event_bus=bus)
 
         def capture_board_state(event):
@@ -195,7 +197,7 @@ class TestMoveResolvedPublishedByEngine:
 
         assert len(board_snapshots) == 1
         # Board should show wR at (0,2) when the event fires
-        assert board_snapshots[0][2] == "wR"
+        assert board_snapshots[0][2] == WHITE_ROOK
         assert board_snapshots[0][0] is None
 
 
@@ -211,7 +213,7 @@ class TestEventBusUnsubscribe:
         bus.unsubscribe(MoveResolved, handler)
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=0, promoted_to=None,
         ))
 
@@ -229,7 +231,7 @@ class TestEventBusUnsubscribe:
         bus.unsubscribe(MoveResolved, handler_a)
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=0, promoted_to=None,
         ))
 
@@ -263,7 +265,7 @@ class TestEventBusUnsubscribe:
         bus.unsubscribe(MoveResolved, handler)
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=0, promoted_to=None,
         ))
 

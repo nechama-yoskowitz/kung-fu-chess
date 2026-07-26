@@ -111,7 +111,8 @@ class TestMultipleSimultaneousGames:
         s1.tick(MOVE_DURATION_MS + 1)
 
         # Session 2 board is unchanged
-        assert s2.engine.board[6][0] == "wP"
+        from game.model.piece import WHITE_PAWN
+        assert s2.engine.board[6][0] == WHITE_PAWN
         assert s2.engine.board[5][0] is None
 
     def test_players_routed_to_correct_session(self):

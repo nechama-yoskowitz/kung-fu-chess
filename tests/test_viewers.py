@@ -245,12 +245,13 @@ class TestViewerServerIntegration:
         await srv._route_message(make_join_room(room_id), ws3)
 
         # Manually set up a quick checkmate board
+        from game.model.piece import BLACK_KING, WHITE_ROOK
         room = srv.room_manager.get_room(room_id)
         for r in range(8):
             for c in range(len(room.session.engine.board[0])):
-                room.session.engine.board[r][c] = "."
-        room.session.engine.board[0][0] = "bK"
-        room.session.engine.board[3][0] = "wR"
+                room.session.engine.board[r][c] = None
+        room.session.engine.board[0][0] = BLACK_KING
+        room.session.engine.board[3][0] = WHITE_ROOK
 
         # White rook captures black king (same column, straight up)
         await srv._route_message(make_move_request(3, 0, 0, 0), ws1)

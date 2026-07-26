@@ -1,5 +1,6 @@
 import pytest
 from game.rules.rule_engine import RuleEngine, MoveValidation
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -8,7 +9,7 @@ from game.rules.rule_engine import RuleEngine, MoveValidation
 
 def make_board(rows):
     """Build a board from a list of space-separated strings."""
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 @pytest.fixture

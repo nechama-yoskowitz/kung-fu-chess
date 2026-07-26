@@ -1,6 +1,7 @@
 import pytest
 from game.controller.controller import Controller
 from game.engine.game_engine import MoveResult
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ class FakeEngine:
 
 
 def make_board(rows):
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 # ---------------------------------------------------------------------------

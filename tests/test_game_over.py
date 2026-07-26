@@ -15,12 +15,14 @@ from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.graphics.mouse_input_adapter import MouseInputAdapter
 from game.controller.board_mapper import BoardMapper
+from game.io.piece_token_codec import parse_board
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import WHITE_ROOK
 
 
 def _make_board_with_kings():
     """Board where white can capture black king in one move."""
-    return [
+    return parse_board([
         [".", ".", ".", ".", "bK", ".", ".", "."],
         [".", ".", ".", ".", ".", ".", ".", "."],
         [".", ".", ".", ".", ".", ".", ".", "."],
@@ -29,7 +31,7 @@ def _make_board_with_kings():
         [".", ".", ".", ".", ".", ".", ".", "."],
         [".", ".", ".", ".", ".", ".", ".", "."],
         [".", ".", ".", ".", "wK", "wR", ".", "."],
-    ]
+    ])
 
 
 class TestNoOverlayBeforeGameOver:
@@ -49,7 +51,7 @@ class TestOverlayAppearsOnGameOver:
     """Overlay appears when game_over is True."""
 
     def test_game_over_after_king_capture(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", "bK", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
@@ -58,12 +60,12 @@ class TestOverlayAppearsOnGameOver:
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", "wR", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
 
         # Move rook from (7,5) to (0,5) — this doesn't capture the king
         # Let's set up a direct capture scenario
-        board2 = [
+        board2 = parse_board([
             [".", ".", ".", ".", "bK", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
@@ -72,7 +74,7 @@ class TestOverlayAppearsOnGameOver:
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", "wR", ".", ".", "."],
-        ]
+        ])
         engine2 = GameEngine(board2)
 
         # Rook moves to king's column: (7,4) to (0,4) captures bK
@@ -85,7 +87,7 @@ class TestOverlayAppearsOnGameOver:
         assert engine2.game_over is True
 
     def test_game_over_provider_returns_true_after_capture(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", "bK", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
@@ -94,7 +96,7 @@ class TestOverlayAppearsOnGameOver:
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", "wR", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         provider = lambda: engine.game_over
 
@@ -108,7 +110,7 @@ class TestFinalBoardVisible:
     """Final board state remains accessible after game over."""
 
     def test_board_still_accessible_after_game_over(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", "bK", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
@@ -117,7 +119,7 @@ class TestFinalBoardVisible:
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", "wR", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         engine.request_move(7, 4, 0, 4)
         engine.handle_wait(7 * MOVE_DURATION_MS + 1)
@@ -127,7 +129,7 @@ class TestFinalBoardVisible:
         assert engine.board is not None
         assert len(engine.board) == 8
         # The rook should be at (0,4) now
-        assert engine.board[0][4] == "wR"
+        assert engine.board[0][4] == WHITE_ROOK
 
 
 class TestMouseIgnoredAfterGameOver:
@@ -185,7 +187,7 @@ class TestNoNewMovesAfterGameOver:
         assert len(engine.pending_moves) == 0
 
     def test_no_pending_move_created_via_click_after_game_over(self):
-        board = [
+        board = parse_board([
             [".", ".", ".", ".", "bK", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
@@ -194,7 +196,7 @@ class TestNoNewMovesAfterGameOver:
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", ".", ".", ".", "."],
             [".", ".", ".", ".", "wR", ".", ".", "."],
-        ]
+        ])
         engine = GameEngine(board)
         engine.request_move(7, 4, 0, 4)
         engine.handle_wait(7 * MOVE_DURATION_MS + 1)

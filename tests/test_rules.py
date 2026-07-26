@@ -1,5 +1,10 @@
 import pytest
 from game.rules.rules import is_legal_move, is_legal_pawn_move, is_path_clear
+from game.model.piece import (
+    WHITE_KING, WHITE_ROOK, WHITE_BISHOP, WHITE_QUEEN, WHITE_KNIGHT, WHITE_PAWN,
+    BLACK_PAWN, BLACK_ROOK,
+)
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -8,7 +13,7 @@ from game.rules.rules import is_legal_move, is_legal_pawn_move, is_path_clear
 
 def make_board(rows):
     """Build a board from a list of space-separated strings."""
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 # ---------------------------------------------------------------------------
@@ -16,25 +21,25 @@ def make_board(rows):
 # ---------------------------------------------------------------------------
 
 def test_king_move_one_step_horizontal():
-    assert is_legal_move("wK", 4, 4, 4, 5) is True
+    assert is_legal_move(WHITE_KING, 4, 4, 4, 5) is True
 
 
 def test_king_move_one_step_vertical():
-    assert is_legal_move("wK", 4, 4, 5, 4) is True
+    assert is_legal_move(WHITE_KING, 4, 4, 5, 4) is True
 
 
 def test_king_move_one_step_diagonal():
-    assert is_legal_move("wK", 4, 4, 5, 5) is True
+    assert is_legal_move(WHITE_KING, 4, 4, 5, 5) is True
 
 
 def test_king_move_two_steps_is_illegal():
-    assert is_legal_move("wK", 4, 4, 4, 6) is False
+    assert is_legal_move(WHITE_KING, 4, 4, 4, 6) is False
 
 
 def test_king_stay_in_place():
     # King "moving" to same square is geometrically allowed by is_legal_move
     # (though in practice the game logic would not create such a move)
-    assert is_legal_move("wK", 4, 4, 4, 4) is True
+    assert is_legal_move(WHITE_KING, 4, 4, 4, 4) is True
 
 
 # ---------------------------------------------------------------------------
@@ -42,15 +47,15 @@ def test_king_stay_in_place():
 # ---------------------------------------------------------------------------
 
 def test_rook_move_along_row():
-    assert is_legal_move("wR", 0, 0, 0, 7) is True
+    assert is_legal_move(WHITE_ROOK, 0, 0, 0, 7) is True
 
 
 def test_rook_move_along_column():
-    assert is_legal_move("wR", 0, 0, 7, 0) is True
+    assert is_legal_move(WHITE_ROOK, 0, 0, 7, 0) is True
 
 
 def test_rook_move_diagonal_is_illegal():
-    assert is_legal_move("wR", 0, 0, 3, 3) is False
+    assert is_legal_move(WHITE_ROOK, 0, 0, 3, 3) is False
 
 
 # ---------------------------------------------------------------------------
@@ -58,19 +63,19 @@ def test_rook_move_diagonal_is_illegal():
 # ---------------------------------------------------------------------------
 
 def test_bishop_move_diagonal():
-    assert is_legal_move("wB", 0, 0, 3, 3) is True
+    assert is_legal_move(WHITE_BISHOP, 0, 0, 3, 3) is True
 
 
 def test_bishop_move_anti_diagonal():
-    assert is_legal_move("wB", 4, 4, 2, 6) is True
+    assert is_legal_move(WHITE_BISHOP, 4, 4, 2, 6) is True
 
 
 def test_bishop_move_along_row_is_illegal():
-    assert is_legal_move("wB", 0, 0, 0, 3) is False
+    assert is_legal_move(WHITE_BISHOP, 0, 0, 0, 3) is False
 
 
 def test_bishop_move_along_column_is_illegal():
-    assert is_legal_move("wB", 0, 0, 3, 0) is False
+    assert is_legal_move(WHITE_BISHOP, 0, 0, 3, 0) is False
 
 
 # ---------------------------------------------------------------------------
@@ -78,19 +83,19 @@ def test_bishop_move_along_column_is_illegal():
 # ---------------------------------------------------------------------------
 
 def test_queen_move_along_row():
-    assert is_legal_move("wQ", 3, 3, 3, 7) is True
+    assert is_legal_move(WHITE_QUEEN, 3, 3, 3, 7) is True
 
 
 def test_queen_move_along_column():
-    assert is_legal_move("wQ", 3, 3, 7, 3) is True
+    assert is_legal_move(WHITE_QUEEN, 3, 3, 7, 3) is True
 
 
 def test_queen_move_diagonal():
-    assert is_legal_move("wQ", 3, 3, 6, 6) is True
+    assert is_legal_move(WHITE_QUEEN, 3, 3, 6, 6) is True
 
 
 def test_queen_move_knight_pattern_is_illegal():
-    assert is_legal_move("wQ", 3, 3, 5, 4) is False
+    assert is_legal_move(WHITE_QUEEN, 3, 3, 5, 4) is False
 
 
 # ---------------------------------------------------------------------------
@@ -98,23 +103,23 @@ def test_queen_move_knight_pattern_is_illegal():
 # ---------------------------------------------------------------------------
 
 def test_knight_move_two_one():
-    assert is_legal_move("wN", 4, 4, 6, 5) is True
+    assert is_legal_move(WHITE_KNIGHT, 4, 4, 6, 5) is True
 
 
 def test_knight_move_one_two():
-    assert is_legal_move("wN", 4, 4, 5, 6) is True
+    assert is_legal_move(WHITE_KNIGHT, 4, 4, 5, 6) is True
 
 
 def test_knight_move_backward():
-    assert is_legal_move("wN", 4, 4, 2, 3) is True
+    assert is_legal_move(WHITE_KNIGHT, 4, 4, 2, 3) is True
 
 
 def test_knight_move_straight_is_illegal():
-    assert is_legal_move("wN", 4, 4, 4, 6) is False
+    assert is_legal_move(WHITE_KNIGHT, 4, 4, 4, 6) is False
 
 
 def test_knight_move_diagonal_is_illegal():
-    assert is_legal_move("wN", 4, 4, 6, 6) is False
+    assert is_legal_move(WHITE_KNIGHT, 4, 4, 6, 6) is False
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +132,7 @@ def test_white_pawn_moves_forward_one():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 0) is True
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 0) is True
 
 
 def test_black_pawn_moves_forward_one():
@@ -136,7 +141,7 @@ def test_black_pawn_moves_forward_one():
         "bP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "bP", 1, 0, 2, 0) is True
+    assert is_legal_pawn_move(board, BLACK_PAWN, 1, 0, 2, 0) is True
 
 
 def test_pawn_cannot_move_two_squares():
@@ -148,7 +153,7 @@ def test_pawn_cannot_move_two_squares():
         ". . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 3, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 3, 0) is False
 
 
 def test_pawn_forward_blocked_by_own_piece():
@@ -157,7 +162,7 @@ def test_pawn_forward_blocked_by_own_piece():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 0) is False
 
 
 def test_pawn_forward_blocked_by_enemy_piece():
@@ -166,7 +171,7 @@ def test_pawn_forward_blocked_by_enemy_piece():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 0) is False
 
 
 def test_white_pawn_captures_diagonally():
@@ -175,7 +180,7 @@ def test_white_pawn_captures_diagonally():
         "wP .  .",
         ". .  .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 1) is True
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 1) is True
 
 
 def test_black_pawn_captures_diagonally():
@@ -184,7 +189,7 @@ def test_black_pawn_captures_diagonally():
         "bP .  .",
         ". wR .",
     ])
-    assert is_legal_pawn_move(board, "bP", 1, 0, 2, 1) is True
+    assert is_legal_pawn_move(board, BLACK_PAWN, 1, 0, 2, 1) is True
 
 
 def test_pawn_cannot_capture_own_piece_diagonally():
@@ -193,7 +198,7 @@ def test_pawn_cannot_capture_own_piece_diagonally():
         "wP .  .",
         ". .  .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 1) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 1) is False
 
 
 def test_pawn_cannot_move_diagonally_to_empty_square():
@@ -202,7 +207,7 @@ def test_pawn_cannot_move_diagonally_to_empty_square():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 0, 1) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 0, 1) is False
 
 
 def test_white_pawn_cannot_move_backward():
@@ -211,7 +216,7 @@ def test_white_pawn_cannot_move_backward():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 1, 0, 2, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 1, 0, 2, 0) is False
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +337,7 @@ def test_white_pawn_double_step_from_starting_row():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 6, 0, 4, 0) is True
+    assert is_legal_pawn_move(board, WHITE_PAWN, 6, 0, 4, 0) is True
 
 
 def test_black_pawn_double_step_from_starting_row():
@@ -347,7 +352,7 @@ def test_black_pawn_double_step_from_starting_row():
         ". . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "bP", 1, 0, 3, 0) is True
+    assert is_legal_pawn_move(board, BLACK_PAWN, 1, 0, 3, 0) is True
 
 
 def test_pawn_cannot_double_step_from_non_starting_row():
@@ -362,7 +367,7 @@ def test_pawn_cannot_double_step_from_non_starting_row():
         ". . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 5, 0, 3, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 5, 0, 3, 0) is False
 
 
 def test_pawn_cannot_double_step_if_path_blocked():
@@ -377,7 +382,7 @@ def test_pawn_cannot_double_step_if_path_blocked():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 6, 0, 4, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 6, 0, 4, 0) is False
 
 
 def test_pawn_cannot_double_step_if_destination_occupied():
@@ -392,7 +397,7 @@ def test_pawn_cannot_double_step_if_destination_occupied():
         "wP . .",
         ". . .",
     ])
-    assert is_legal_pawn_move(board, "wP", 6, 0, 4, 0) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 6, 0, 4, 0) is False
 
 
 def test_pawn_cannot_capture_with_double_step():
@@ -408,4 +413,4 @@ def test_pawn_cannot_capture_with_double_step():
         ". . .",
     ])
     # two-square diagonal is not a pawn move at all
-    assert is_legal_pawn_move(board, "wP", 6, 0, 4, 1) is False
+    assert is_legal_pawn_move(board, WHITE_PAWN, 6, 0, 4, 1) is False

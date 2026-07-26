@@ -2,6 +2,7 @@ from game.model.piece import PieceType
 
 CELL_SIZE = 100
 
+# --- Legacy constants kept for IO/boundary layers ---
 EMPTY_CELL = "."
 
 WHITE = "w"
@@ -14,29 +15,6 @@ PIECE_BISHOP = "B"
 PIECE_KNIGHT = "N"
 PIECE_PAWN   = "P"
 
-SLIDING_PIECES = {
-    PIECE_QUEEN, PIECE_ROOK, PIECE_BISHOP,
-    PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP,
-}
-
-# Maps each piece type to its movement rule.
-# The rule is a callable (row_diff, col_diff) -> bool,
-# where both diffs are absolute values.
-# To support custom pieces in the future, add an entry here.
-# Dual-keyed during migration: both legacy string and PieceType enum.
-MOVEMENT_RULES = {
-    PIECE_KING:   lambda dr, dc: dr <= 1 and dc <= 1,
-    PIECE_ROOK:   lambda dr, dc: dr == 0 or dc == 0,
-    PIECE_BISHOP: lambda dr, dc: dr == dc,
-    PIECE_QUEEN:  lambda dr, dc: dr == 0 or dc == 0 or dr == dc,
-    PIECE_KNIGHT: lambda dr, dc: (dr == 2 and dc == 1) or (dr == 1 and dc == 2),
-    PieceType.KING:   lambda dr, dc: dr <= 1 and dc <= 1,
-    PieceType.ROOK:   lambda dr, dc: dr == 0 or dc == 0,
-    PieceType.BISHOP: lambda dr, dc: dr == dc,
-    PieceType.QUEEN:  lambda dr, dc: dr == 0 or dc == 0 or dr == dc,
-    PieceType.KNIGHT: lambda dr, dc: (dr == 2 and dc == 1) or (dr == 1 and dc == 2),
-}
-
 VALID_TOKENS = {
     EMPTY_CELL,
     "wK", "wQ", "wR", "wB", "wN", "wP",
@@ -45,6 +23,18 @@ VALID_TOKENS = {
 
 ERROR_ROW_WIDTH_MISMATCH = "ERROR ROW_WIDTH_MISMATCH"
 ERROR_UNKNOWN_TOKEN      = "ERROR UNKNOWN_TOKEN"
+
+# --- Domain constants keyed by PieceType ---
+
+SLIDING_PIECES = {PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP}
+
+MOVEMENT_RULES = {
+    PieceType.KING:   lambda dr, dc: dr <= 1 and dc <= 1,
+    PieceType.ROOK:   lambda dr, dc: dr == 0 or dc == 0,
+    PieceType.BISHOP: lambda dr, dc: dr == dc,
+    PieceType.QUEEN:  lambda dr, dc: dr == 0 or dc == 0 or dr == dc,
+    PieceType.KNIGHT: lambda dr, dc: (dr == 2 and dc == 1) or (dr == 1 and dc == 2),
+}
 
 # How long (in ms) it takes for a piece to travel from source to destination.
 MOVE_DURATION_MS = 1000
@@ -56,14 +46,7 @@ JUMP_DURATION_MS = 3500
 COOLDOWN_DURATION_MS = 2000
 
 # Material value of each piece type for scoring.
-# Dual-keyed during migration: both legacy string and PieceType enum.
 PIECE_VALUES = {
-    PIECE_PAWN:   1,
-    PIECE_KNIGHT: 3,
-    PIECE_BISHOP: 3,
-    PIECE_ROOK:   5,
-    PIECE_QUEEN:  9,
-    PIECE_KING:   0,
     PieceType.PAWN:   1,
     PieceType.KNIGHT: 3,
     PieceType.BISHOP: 3,

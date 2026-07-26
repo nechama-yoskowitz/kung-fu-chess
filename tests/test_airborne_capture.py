@@ -8,12 +8,14 @@ The airborne piece survives and remains on its cell.
 from game.engine.game_engine import GameEngine
 from game.events import EventBus, MoveResolved, GameEnded
 from game.model.constants import MOVE_DURATION_MS, JUMP_DURATION_MS
+from game.model.piece import WHITE_PAWN, WHITE_KING, BLACK_PAWN, BLACK_ROOK, WHITE_ROOK, PieceColor
+from game.io.piece_token_codec import parse_board
 from game.realtime.motion import ActiveJump, PendingMove
 from game.realtime.movement_resolver import apply_arrived_moves
 
 
 def make_board(rows):
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 def make_move(piece, fr, fc, tr, tc, arrive_at, seq_id=0):
@@ -28,41 +30,41 @@ class TestMovingPawnCapturedByAirbornePawn:
     def test_moving_pawn_captured(self):
         board = make_board(["bP . . wP"])
         # wP is airborne at (0,3). bP moves to (0,3).
-        active_jumps = [ActiveJump(piece="wP", row=0, col=3, expires_at=5000)]
-        pending = [make_move("bP", 0, 0, 0, 3, arrive_at=3000)]
+        active_jumps = [ActiveJump(piece=WHITE_PAWN, row=0, col=3, expires_at=5000)]
+        pending = [make_move(BLACK_PAWN, 0, 0, 0, 3, arrive_at=3000)]
 
         remaining, game_over, jumps, _, resolved = apply_arrived_moves(
             board, pending, clock=3000, active_jumps=active_jumps
         )
 
         # bP is destroyed (not placed). wP remains.
-        assert board[0][3] == "wP"  # airborne piece stays on board
-        assert board[0][0] == "."   # source cleared
+        assert board[0][3] == WHITE_PAWN  # airborne piece stays on board
+        assert board[0][0] is None        # source cleared
         assert game_over is False
 
     def test_airborne_pawn_remains_on_board(self):
         board = make_board(["bR . . wP"])
-        active_jumps = [ActiveJump(piece="wP", row=0, col=3, expires_at=5000)]
-        pending = [make_move("bR", 0, 0, 0, 3, arrive_at=3000)]
+        active_jumps = [ActiveJump(piece=WHITE_PAWN, row=0, col=3, expires_at=5000)]
+        pending = [make_move(BLACK_ROOK, 0, 0, 0, 3, arrive_at=3000)]
 
         apply_arrived_moves(board, pending, clock=3000, active_jumps=active_jumps)
 
-        assert board[0][3] == "wP"
+        assert board[0][3] == WHITE_PAWN
 
     def test_moving_piece_not_placed_at_destination(self):
         board = make_board(["bR . . wP"])
-        active_jumps = [ActiveJump(piece="wP", row=0, col=3, expires_at=5000)]
-        pending = [make_move("bR", 0, 0, 0, 3, arrive_at=3000)]
+        active_jumps = [ActiveJump(piece=WHITE_PAWN, row=0, col=3, expires_at=5000)]
+        pending = [make_move(BLACK_ROOK, 0, 0, 0, 3, arrive_at=3000)]
 
         apply_arrived_moves(board, pending, clock=3000, active_jumps=active_jumps)
 
         # bR must NOT be at (0,3) — it was destroyed
-        assert board[0][3] == "wP"  # Only wP is there
+        assert board[0][3] == WHITE_PAWN  # Only wP is there
 
     def test_capture_event_identifies_arriving_piece_as_captured(self):
         board = make_board(["bR . . wP"])
-        active_jumps = [ActiveJump(piece="wP", row=0, col=3, expires_at=5000)]
-        pending = [make_move("bR", 0, 0, 0, 3, arrive_at=3000)]
+        active_jumps = [ActiveJump(piece=WHITE_PAWN, row=0, col=3, expires_at=5000)]
+        pending = [make_move(BLACK_ROOK, 0, 0, 0, 3, arrive_at=3000)]
 
         _, _, _, _, resolved = apply_arrived_moves(
             board, pending, clock=3000, active_jumps=active_jumps
@@ -70,8 +72,8 @@ class TestMovingPawnCapturedByAirbornePawn:
 
         captured = [r for r in resolved if r["outcome"] == "captured"]
         assert len(captured) == 1
-        assert captured[0]["piece"] == "bR"  # the mover
-        assert captured[0]["captured_piece"] == "bR"  # the mover is the victim
+        assert captured[0]["piece"] == BLACK_ROOK  # the mover
+        assert captured[0]["captured_piece"] == BLACK_ROOK  # the mover is the victim
 
 
 class TestCaptureSoundEmitted:
@@ -99,8 +101,8 @@ class TestMovingKingCapturedByAirborne:
 
     def test_moving_king_captured_sets_game_over(self):
         board = make_board(["wK . . bP"])
-        active_jumps = [ActiveJump(piece="bP", row=0, col=3, expires_at=5000)]
-        pending = [make_move("wK", 0, 0, 0, 3, arrive_at=3000)]
+        active_jumps = [ActiveJump(piece=BLACK_PAWN, row=0, col=3, expires_at=5000)]
+        pending = [make_move(WHITE_KING, 0, 0, 0, 3, arrive_at=3000)]
 
         _, game_over, _, _, _ = apply_arrived_moves(
             board, pending, clock=3000, active_jumps=active_jumps
@@ -124,8 +126,8 @@ class TestMovingKingCapturedByAirborne:
         assert engine.game_over is True
         assert len(received) == 1
         # The arriving king (white) was captured → black wins
-        assert received[0].winner == "b"
-        assert received[0].loser == "w"
+        assert received[0].winner == PieceColor.BLACK
+        assert received[0].loser == PieceColor.WHITE
 
     def test_no_later_events_after_king_capture(self):
         received = []
@@ -149,15 +151,15 @@ class TestSameColorAirborneUnchanged:
 
     def test_friendly_airborne_passthrough(self):
         board = make_board(["wR . wR"])
-        active_jumps = [ActiveJump(piece="wR", row=0, col=2, expires_at=5000)]
-        pending = [make_move("wR", 0, 0, 0, 2, arrive_at=2000)]
+        active_jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=2, expires_at=5000)]
+        pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=2000)]
 
         _, game_over, _, _, resolved = apply_arrived_moves(
             board, pending, clock=2000, active_jumps=active_jumps
         )
 
         # Friendly airborne: mover passes through, arrives
-        assert board[0][2] == "wR"
+        assert board[0][2] == WHITE_ROOK
         assert game_over is False
         arrived = [r for r in resolved if r["outcome"] == "arrived"]
         assert len(arrived) == 1
@@ -168,11 +170,11 @@ class TestNormalCaptureUnchanged:
 
     def test_normal_ground_capture(self):
         board = make_board(["bR . . wR"])
-        pending = [make_move("bR", 0, 0, 0, 3, arrive_at=3000)]
+        pending = [make_move(BLACK_ROOK, 0, 0, 0, 3, arrive_at=3000)]
 
         _, game_over, _, _, resolved = apply_arrived_moves(board, pending, clock=3000)
 
-        assert board[0][3] == "bR"
+        assert board[0][3] == BLACK_ROOK
         assert game_over is False
         arrived = [r for r in resolved if r["outcome"] == "arrived"]
-        assert arrived[0]["captured_piece"] == "wR"
+        assert arrived[0]["captured_piece"] == WHITE_ROOK

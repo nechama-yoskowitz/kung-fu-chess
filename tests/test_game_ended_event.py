@@ -9,42 +9,44 @@ is preserved.
 from game.events import EventBus, MoveResolved, GameEnded
 from game.engine.game_engine import GameEngine
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import WHITE_ROOK, BLACK_ROOK, BLACK_KING, WHITE_KING, PieceColor
+from game.io.piece_token_codec import parse_board
 
 
 class TestBlackKingCaptured:
-    """Capturing the black king publishes GameEnded(winner='w', loser='b')."""
+    """Capturing the black king publishes GameEnded(winner=WHITE, loser=BLACK)."""
 
     def test_white_wins_by_capturing_black_king(self):
         received = []
         bus = EventBus()
         bus.subscribe(GameEnded, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
 
         assert len(received) == 1
-        assert received[0].winner == "w"
-        assert received[0].loser == "b"
+        assert received[0].winner == PieceColor.WHITE
+        assert received[0].loser == PieceColor.BLACK
 
 
 class TestWhiteKingCaptured:
-    """Capturing the white king publishes GameEnded(winner='b', loser='w')."""
+    """Capturing the white king publishes GameEnded(winner=BLACK, loser=WHITE)."""
 
     def test_black_wins_by_capturing_white_king(self):
         received = []
         bus = EventBus()
         bus.subscribe(GameEnded, lambda e: received.append(e))
 
-        board = [["bR", ".", ".", "wK"]]
+        board = parse_board([["bR", ".", ".", "wK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
 
         assert len(received) == 1
-        assert received[0].winner == "b"
-        assert received[0].loser == "w"
+        assert received[0].winner == PieceColor.BLACK
+        assert received[0].loser == PieceColor.WHITE
 
 
 class TestGameOverTrueWhenSubscriberCalled:
@@ -54,7 +56,7 @@ class TestGameOverTrueWhenSubscriberCalled:
         states = []
         bus = EventBus()
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
 
         def capture_state(event):
@@ -77,7 +79,7 @@ class TestPublishedExactlyOnce:
         bus = EventBus()
         bus.subscribe(GameEnded, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -94,7 +96,7 @@ class TestPublishedExactlyOnce:
         bus = EventBus()
         bus.subscribe(GameEnded, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
 
@@ -114,7 +116,7 @@ class TestMoveResolvedBeforeGameEnded:
         bus.subscribe(MoveResolved, lambda e: all_events.append(("MoveResolved", e)))
         bus.subscribe(GameEnded, lambda e: all_events.append(("GameEnded", e)))
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -131,7 +133,7 @@ class TestExistingBehaviorPreserved:
 
     def test_score_still_works_for_non_king_captures(self):
         bus = EventBus()
-        board = [["wR", ".", ".", "bR"]]
+        board = parse_board([["wR", ".", ".", "bR"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -141,7 +143,7 @@ class TestExistingBehaviorPreserved:
 
     def test_king_capture_gives_zero_score(self):
         bus = EventBus()
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
@@ -155,7 +157,7 @@ class TestExistingBehaviorPreserved:
         bus = EventBus()
         bus.subscribe(GameEnded, lambda e: received.append(e))
 
-        board = [["wR", ".", ".", "bK"]]
+        board = parse_board([["wR", ".", ".", "bK"]])
         engine = GameEngine(board, event_bus=bus)
         engine.request_move(0, 0, 0, 3)
 
@@ -163,6 +165,6 @@ class TestExistingBehaviorPreserved:
         engine.handle_wait(3 * MOVE_DURATION_MS + 1)
 
         assert len(received) == 1
-        assert received[0].winner == "w"
-        assert received[0].loser == "b"
+        assert received[0].winner == PieceColor.WHITE
+        assert received[0].loser == PieceColor.BLACK
         assert engine.game_over is True

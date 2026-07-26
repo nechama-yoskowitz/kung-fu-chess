@@ -3,10 +3,12 @@ import pytest
 from game.engine.game_engine import GameEngine
 from game.io.command_runner import process_commands
 from game.model.constants import MOVE_DURATION_MS
+from game.model.piece import WHITE_ROOK, WHITE_QUEEN, WHITE_KNIGHT, WHITE_PAWN, BLACK_ROOK, BLACK_KING
+from game.io.piece_token_codec import parse_board
 
 
 def make_board(rows):
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +40,8 @@ def test_same_color_rook_and_queen_cross_paths_later_stops():
     engine.request_move(7, 4, 0, 4)   # Rook up, seq=0
     engine.request_move(3, 0, 3, 7)   # Queen right, seq=1
     engine.handle_wait(7 * MOVE_DURATION_MS)  # enough for both to finish
-    assert board[0][4] == "wR"   # rook arrived at destination
-    assert board[3][3] == "wQ"   # queen stopped one before crossing
+    assert board[0][4] == WHITE_ROOK   # rook arrived at destination
+    assert board[3][3] == WHITE_QUEEN   # queen stopped one before crossing
 
 
 def test_same_color_same_destination_later_stops_before():
@@ -51,8 +53,8 @@ def test_same_color_same_destination_later_stops_before():
     engine.handle_wait(2 * MOVE_DURATION_MS)
     # seq=0 arrives first (lower seq_id), occupies (0,2)
     # seq=1 sees same-color at (0,2) → stops at (0,3)
-    assert board[0][2] == "wR"
-    assert board[0][3] == "wR"
+    assert board[0][2] == WHITE_ROOK
+    assert board[0][3] == WHITE_ROOK
     assert board[0][0] is None
     assert board[0][4] is None
 
@@ -77,7 +79,7 @@ def test_opposite_color_cross_paths_later_captures():
     engine.request_move(0, 7, 0, 0)   # bR, seq=1
     engine.handle_wait(7 * MOVE_DURATION_MS)
     # wR captures bR mid-path and continues to destination
-    assert board[0][7] == "wR"
+    assert board[0][7] == WHITE_ROOK
     assert board[0][0] is None
 
 
@@ -97,7 +99,7 @@ def test_opposite_color_capture_mid_path_captured_piece_gone():
     # bR captured. wR continues.
     # t=4: wR→(0,4). t=5: wR→(0,5) arrived.
     engine.handle_wait(5 * MOVE_DURATION_MS)
-    assert board[0][5] == "wR"
+    assert board[0][5] == WHITE_ROOK
     assert board[0][0] is None   # bR never arrived
 
 
@@ -126,8 +128,8 @@ def test_stopped_piece_does_not_arrive():
     engine.request_move(0, 4, 0, 2)   # seq=1, arrives t=2000
     engine.handle_wait(2 * MOVE_DURATION_MS)
     # seq=1 stopped at (0,3), did NOT arrive at (0,2)
-    assert board[0][3] == "wR"  # stopped here
-    assert board[0][2] == "wR"  # seq=0 arrived
+    assert board[0][3] == WHITE_ROOK  # stopped here
+    assert board[0][2] == WHITE_ROOK  # seq=0 arrived
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +150,8 @@ def test_knight_not_blocked_mid_path():
     # Knight destination (0,1) is empty → arrives fine.
     engine.request_move(2, 0, 0, 1)
     engine.handle_wait(2 * MOVE_DURATION_MS)
-    assert board[0][1] == "wN"
-    assert board[1][1] == "wP"  # not affected
+    assert board[0][1] == WHITE_KNIGHT
+    assert board[1][1] == WHITE_PAWN  # not affected
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +163,7 @@ def test_large_wait_processes_all():
     engine = GameEngine(board)
     engine.request_move(0, 0, 0, 7)  # 7 cells, arrives at t=7000
     engine.handle_wait(10000)  # way past arrival
-    assert board[0][7] == "wR"
+    assert board[0][7] == WHITE_ROOK
     assert board[0][0] is None
 
 
@@ -197,8 +199,8 @@ def test_tiebreak_by_sequence_id():
     engine.request_move(0, 0, 0, 2)   # seq=0, arrive=2000
     engine.request_move(0, 4, 0, 2)   # seq=1, arrive=2000
     engine.handle_wait(2 * MOVE_DURATION_MS)
-    assert board[0][2] == "wR"   # seq=0 won
-    assert board[0][3] == "wR"   # seq=1 stopped at (0,3)
+    assert board[0][2] == WHITE_ROOK   # seq=0 won
+    assert board[0][3] == WHITE_ROOK   # seq=1 stopped at (0,3)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +246,7 @@ def test_captured_static_piece_removed():
     engine = GameEngine(board)
     engine.request_move(0, 0, 0, 3)   # wR → col 3 where bP is (valid — destination capture)
     engine.handle_wait(3 * MOVE_DURATION_MS)
-    assert board[0][3] == "wR"    # wR captured bP
+    assert board[0][3] == WHITE_ROOK    # wR captured bP
     assert board[0][0] is None
 
 

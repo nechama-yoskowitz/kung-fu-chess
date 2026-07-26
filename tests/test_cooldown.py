@@ -11,6 +11,8 @@ from game.io.command_runner import process_commands
 from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
 from game.realtime.real_time_arbiter import RealTimeArbiter
 from game.realtime.motion import PendingMove
+from game.model.piece import WHITE_ROOK, WHITE_BISHOP, WHITE_PAWN, BLACK_ROOK, BLACK_PAWN
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -18,7 +20,7 @@ from game.realtime.motion import PendingMove
 # ---------------------------------------------------------------------------
 
 def make_board(rows):
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 # ===========================================================================
@@ -28,7 +30,7 @@ def make_board(rows):
 def test_start_cooldown_adds_cooldown_with_correct_available_at():
     arbiter = RealTimeArbiter()
     arbiter.clock = 2000
-    arbiter.start_cooldown("wR", 0, 2)
+    arbiter.start_cooldown(WHITE_ROOK, 0, 2)
     assert len(arbiter.active_cooldowns) == 1
     cd = arbiter.active_cooldowns[0]
     assert cd.row == 0
@@ -39,7 +41,7 @@ def test_start_cooldown_adds_cooldown_with_correct_available_at():
 def test_piece_is_resting_before_available_at():
     arbiter = RealTimeArbiter()
     arbiter.clock = 2000
-    arbiter.start_cooldown("wR", 0, 2)
+    arbiter.start_cooldown(WHITE_ROOK, 0, 2)
     arbiter.clock = 2999
     assert arbiter.is_piece_resting_at(0, 2) is True
 
@@ -47,7 +49,7 @@ def test_piece_is_resting_before_available_at():
 def test_piece_is_available_at_exact_available_at():
     arbiter = RealTimeArbiter()
     arbiter.clock = 2000
-    arbiter.start_cooldown("wR", 0, 2)
+    arbiter.start_cooldown(WHITE_ROOK, 0, 2)
     arbiter.clock = 4000
     assert arbiter.is_piece_resting_at(0, 2) is False
 
@@ -55,7 +57,7 @@ def test_piece_is_available_at_exact_available_at():
 def test_expire_cooldowns_removes_expired():
     arbiter = RealTimeArbiter()
     arbiter.clock = 0
-    arbiter.start_cooldown("wR", 0, 0)
+    arbiter.start_cooldown(WHITE_ROOK, 0, 0)
     arbiter.clock = COOLDOWN_DURATION_MS
     arbiter.expire_cooldowns()
     assert len(arbiter.active_cooldowns) == 0
@@ -64,9 +66,9 @@ def test_expire_cooldowns_removes_expired():
 def test_multiple_cooldowns_coexist():
     arbiter = RealTimeArbiter()
     arbiter.clock = 0
-    arbiter.start_cooldown("wR", 0, 0)
+    arbiter.start_cooldown(WHITE_ROOK, 0, 0)
     arbiter.clock = 500
-    arbiter.start_cooldown("wB", 1, 1)
+    arbiter.start_cooldown(WHITE_BISHOP, 1, 1)
     # At clock=500: both resting
     assert arbiter.is_piece_resting_at(0, 0) is True
     assert arbiter.is_piece_resting_at(1, 1) is True
@@ -75,9 +77,9 @@ def test_multiple_cooldowns_coexist():
 def test_expiring_one_cooldown_does_not_affect_another():
     arbiter = RealTimeArbiter()
     arbiter.clock = 0
-    arbiter.start_cooldown("wR", 0, 0)  # available_at=2000
+    arbiter.start_cooldown(WHITE_ROOK, 0, 0)  # available_at=2000
     arbiter.clock = 500
-    arbiter.start_cooldown("wB", 1, 1)  # available_at=2500
+    arbiter.start_cooldown(WHITE_BISHOP, 1, 1)  # available_at=2500
     arbiter.clock = 2000
     arbiter.expire_cooldowns()
     assert arbiter.is_piece_resting_at(0, 0) is False
@@ -91,7 +93,7 @@ def test_expiring_one_cooldown_does_not_affect_another():
 def test_successful_arrival_creates_cooldown():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
-    arbiter.start_motion("wR", 0, 0, 0, 1)
+    arbiter.start_motion(WHITE_ROOK, 0, 0, 0, 1)
     arbiter.advance_time(board, MOVE_DURATION_MS)
     # After arrival, piece should be resting at destination
     assert arbiter.is_piece_resting_at(0, 1) is True
@@ -100,7 +102,7 @@ def test_successful_arrival_creates_cooldown():
 def test_move_still_in_flight_does_not_create_cooldown():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . ."])
-    arbiter.start_motion("wR", 0, 0, 0, 1)
+    arbiter.start_motion(WHITE_ROOK, 0, 0, 0, 1)
     arbiter.advance_time(board, MOVE_DURATION_MS - 1)
     assert arbiter.is_piece_resting_at(0, 1) is False
 
@@ -108,7 +110,7 @@ def test_move_still_in_flight_does_not_create_cooldown():
 def test_cancelled_move_does_not_create_cooldown():
     arbiter = RealTimeArbiter()
     board = make_board([". . ."])  # piece already gone from source
-    arbiter.pending_moves = [PendingMove("wR", 0, 0, 0, 2, started_at=0, arrive_at=1000, sequence_id=0)]
+    arbiter.pending_moves = [PendingMove(WHITE_ROOK, 0, 0, 0, 2, started_at=0, arrive_at=1000, sequence_id=0)]
     arbiter.advance_time(board, 1000)
     assert arbiter.is_piece_resting_at(0, 2) is False
 
@@ -116,7 +118,7 @@ def test_cancelled_move_does_not_create_cooldown():
 def test_capture_creates_cooldown():
     arbiter = RealTimeArbiter()
     board = make_board(["wR bP ."])
-    arbiter.start_motion("wR", 0, 0, 0, 1)
+    arbiter.start_motion(WHITE_ROOK, 0, 0, 0, 1)
     arbiter.advance_time(board, MOVE_DURATION_MS)
     assert arbiter.is_piece_resting_at(0, 1) is True
 
@@ -125,7 +127,7 @@ def test_promotion_creates_cooldown():
     arbiter = RealTimeArbiter()
     # 3-row board: white promotion row = 0
     board = make_board([".", "wP", "."])
-    arbiter.start_motion("wP", 1, 0, 0, 0)
+    arbiter.start_motion(WHITE_PAWN, 1, 0, 0, 0)
     arbiter.advance_time(board, MOVE_DURATION_MS)
     # Pawn promoted to queen, cooldown still at destination
     assert arbiter.is_piece_resting_at(0, 0) is True
@@ -137,12 +139,12 @@ def test_airborne_capture_does_not_create_cooldown_for_destroyed_piece():
     arbiter = RealTimeArbiter()
     board = make_board(["wR . bR"])
     # bR is airborne at (0,2)
-    arbiter.active_jumps = [ActiveJump(piece="bR", row=0, col=2, expires_at=5000)]
-    arbiter.start_motion("wR", 0, 0, 0, 2)
+    arbiter.active_jumps = [ActiveJump(piece=BLACK_ROOK, row=0, col=2, expires_at=5000)]
+    arbiter.start_motion(WHITE_ROOK, 0, 0, 0, 2)
     arbiter.advance_time(board, 2 * MOVE_DURATION_MS)
     # wR was destroyed by airborne bR → no cooldown for wR at (0,2)
     # bR remains at (0,2)
-    assert board[0][2] == "bR"
+    assert board[0][2] == BLACK_ROOK
 
 
 # ===========================================================================
@@ -317,4 +319,4 @@ def test_captured_resting_piece_cooldown_does_not_block_new_piece():
     engine.handle_wait(3 * MOVE_DURATION_MS)  # distance 2, but wait enough
     # After bR arrives and captures, the old wR cooldown should not block bR
     # bR now has its OWN cooldown at (0,1), not wR's
-    assert board[0][1] == "bR"
+    assert board[0][1] == BLACK_ROOK

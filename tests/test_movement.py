@@ -5,7 +5,12 @@ from game.io.command_runner import process_commands
 from game.controller.controller import Controller
 from game.engine.game_engine import GameEngine
 from game.model.constants import MOVE_DURATION_MS, COOLDOWN_DURATION_MS
-from game.model.piece import WHITE_ROOK
+from game.model.piece import (
+    Piece, PieceColor, PieceType,
+    WHITE_ROOK, WHITE_BISHOP, WHITE_PAWN, WHITE_KNIGHT, WHITE_QUEEN, WHITE_KING,
+    BLACK_ROOK, BLACK_PAWN, BLACK_KING, BLACK_KNIGHT,
+)
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -13,8 +18,8 @@ from game.model.piece import WHITE_ROOK
 # ---------------------------------------------------------------------------
 
 def make_board(rows):
-    """Build a board from a list of space-separated strings."""
-    return [row.split() for row in rows]
+    """Build a domain board from a list of space-separated strings."""
+    return parse_board([row.split() for row in rows])
 
 
 def make_move(piece, from_row, from_col, to_row, to_col, arrive_at, started_at=0, sequence_id=0):
@@ -27,10 +32,10 @@ def make_move(piece, from_row, from_col, to_row, to_col, arrive_at, started_at=0
 
 def test_move_does_not_arrive_before_time():
     board = make_board(["wR . ."])
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=999)
-    assert board[0][0] == "wR"
-    assert board[0][2] == "."
+    assert board[0][0] == WHITE_ROOK
+    assert board[0][2] is None
     assert len(remaining) == 1
     assert game_over is False
 
@@ -38,20 +43,20 @@ def test_move_does_not_arrive_before_time():
 def test_move_arrives_exactly_at_time():
     # arrive_at is inclusive: the piece lands exactly when clock == arrive_at
     board = make_board(["wR . ."])
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
-    assert board[0][2] == "wR"
-    assert board[0][0] == "."
+    assert board[0][2] == WHITE_ROOK
+    assert board[0][0] is None
     assert len(remaining) == 0
     assert game_over is False
 
 
 def test_move_arrives_after_time():
     board = make_board(["wR . ."])
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1001)
-    assert board[0][2] == "wR"
-    assert board[0][0] == "."
+    assert board[0][2] == WHITE_ROOK
+    assert board[0][0] is None
     assert len(remaining) == 0
     assert game_over is False
 
@@ -59,16 +64,16 @@ def test_move_arrives_after_time():
 def test_only_arrived_moves_are_applied():
     board = make_board(["wR . . . wB"])
     pending = [
-        make_move("wR", 0, 0, 0, 1, arrive_at=500, sequence_id=0),
-        make_move("wB", 0, 4, 0, 3, arrive_at=2000, sequence_id=1),
+        make_move(WHITE_ROOK, 0, 0, 0, 1, arrive_at=500, sequence_id=0),
+        make_move(WHITE_BISHOP, 0, 4, 0, 3, arrive_at=2000, sequence_id=1),
     ]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
     # wR has arrived (arrive_at=500 < clock=1000)
-    assert board[0][1] == "wR"
-    assert board[0][0] == "."
+    assert board[0][1] == WHITE_ROOK
+    assert board[0][0] is None
     # wB has not arrived yet (arrive_at=2000 > clock=1000)
-    assert board[0][4] == "wB"
-    assert board[0][3] == "."
+    assert board[0][4] == WHITE_BISHOP
+    assert board[0][3] is None
     assert len(remaining) == 1
     assert game_over is False
 
@@ -79,28 +84,28 @@ def test_multiple_moves_arrive_at_same_time():
         "wB . .",
     ])
     pending = [
-        make_move("wR", 0, 0, 0, 2, arrive_at=1000, sequence_id=0),
-        make_move("wB", 1, 0, 1, 2, arrive_at=1000, sequence_id=1),
+        make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000, sequence_id=0),
+        make_move(WHITE_BISHOP, 1, 0, 1, 2, arrive_at=1000, sequence_id=1),
     ]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
-    assert board[0][2] == "wR"
-    assert board[1][2] == "wB"
+    assert board[0][2] == WHITE_ROOK
+    assert board[1][2] == WHITE_BISHOP
     assert len(remaining) == 0
     assert game_over is False
 
 
 def test_arrived_move_captures_enemy():
     board = make_board(["wR bP ."])
-    pending = [make_move("wR", 0, 0, 0, 1, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 1, arrive_at=1000)]
     apply_arrived_moves(board, pending, clock=1000)
-    assert board[0][1] == "wR"
-    assert board[0][0] == "."
+    assert board[0][1] == WHITE_ROOK
+    assert board[0][0] is None
 
 
 def test_apply_with_empty_pending_list():
     board = make_board(["wR . ."])
     remaining, game_over, _, _, _ = apply_arrived_moves(board, [], clock=5000)
-    assert board[0][0] == "wR"
+    assert board[0][0] == WHITE_ROOK
     assert remaining == []
     assert game_over is False
 
@@ -133,7 +138,7 @@ def test_click_legal_move_does_not_mutate_board():
     ctrl.selected = (0, 0)
     ctrl.click(200, 0)
     # board must be unchanged until the move arrives
-    assert board[0][0] == "wR"
+    assert board[0][0] == WHITE_ROOK
     assert board[0][2] is None
 
 
@@ -235,7 +240,7 @@ def test_pawn_arrives_after_wait(capsys):
 # ---------------------------------------------------------------------------
 
 def test_piece_is_moving_when_pending():
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     assert is_piece_moving(pending, 0, 0) is True
 
 
@@ -244,13 +249,13 @@ def test_piece_is_not_moving_when_no_pending():
 
 
 def test_piece_is_not_moving_when_different_square():
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     assert is_piece_moving(pending, 0, 1) is False
 
 
 def test_piece_at_destination_is_not_considered_moving():
     # destination square is not the origin — should not block clicks there
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     assert is_piece_moving(pending, 0, 2) is False
 
 
@@ -261,7 +266,7 @@ def test_piece_at_destination_is_not_considered_moving():
 def test_cannot_select_moving_piece():
     board = make_board(["wR . ."])
     engine = GameEngine(board)
-    engine.arbiter.pending_moves = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    engine.arbiter.pending_moves = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     ctrl = Controller(engine)
     # try to select the rook while it is in flight
     result = ctrl.click(0, 0)
@@ -282,7 +287,7 @@ def test_can_select_piece_after_arrival():
 def test_cannot_switch_selection_to_moving_piece():
     board = make_board(["wK wR ."])
     engine = GameEngine(board)
-    engine.arbiter.pending_moves = [make_move("wR", 0, 1, 0, 2, arrive_at=1000)]
+    engine.arbiter.pending_moves = [make_move(WHITE_ROOK, 0, 1, 0, 2, arrive_at=1000)]
     ctrl = Controller(engine)
     ctrl.selected = (0, 0)
     # try to switch to wR while it is in flight — selection must stay on wK
@@ -786,15 +791,15 @@ def test_same_color_pieces_move_concurrently_no_conflict(capsys):
 def test_capturing_enemy_king_returns_game_over():
     # wR arrives at the square occupied by bK → game_over = True
     board = make_board(["wR . bK"])
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is True
-    assert board[0][2] == "wR"   # king captured, wR now there
+    assert board[0][2] == WHITE_ROOK   # king captured, wR now there
 
 
 def test_capturing_non_king_does_not_trigger_game_over():
     board = make_board(["wR bP ."])
-    pending = [make_move("wR", 0, 0, 0, 1, arrive_at=1000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 1, arrive_at=1000)]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is False
 
@@ -804,13 +809,13 @@ def test_game_over_pending_moves_cleared():
     # Second move (still pending at same clock) must be discarded.
     board = make_board(["wR bK", "wB . "])
     pending = [
-        make_move("wR", 0, 0, 0, 1, arrive_at=1000, sequence_id=0),
-        make_move("wB", 1, 0, 1, 1, arrive_at=1000, sequence_id=1),
+        make_move(WHITE_ROOK, 0, 0, 0, 1, arrive_at=1000, sequence_id=0),
+        make_move(WHITE_BISHOP, 1, 0, 1, 1, arrive_at=1000, sequence_id=1),
     ]
     remaining, game_over, _, _, _ = apply_arrived_moves(board, pending, clock=1000)
     assert game_over is True
     assert len(remaining) == 0
-    assert board[1][0] == "wB"   # wB never moved
+    assert board[1][0] == WHITE_BISHOP   # wB never moved
 
 
 def test_game_over_triggered_only_on_arrival_not_on_click(capsys):
@@ -1135,12 +1140,12 @@ def test_airborne_capture_only_enemy_direct():
     board = make_board(["wR . wR"])
     # wR at (0,2) is airborne. wR at (0,0) arrives at (0,2).
     # Same color → should NOT trigger airborne capture; normal move_piece occurs.
-    active_jumps = [ActiveJump(piece="wR", row=0, col=2, expires_at=2000)]
-    pending = [make_move("wR", 0, 0, 0, 2, arrive_at=1000)]
+    active_jumps = [ActiveJump(piece=WHITE_ROOK, row=0, col=2, expires_at=2000)]
+    pending = [make_move(WHITE_ROOK, 0, 0, 0, 2, arrive_at=1000)]
     remaining, game_over, jumps, _, _ = apply_arrived_moves(board, pending, clock=1000, active_jumps=active_jumps)
     # Friendly piece: airborne capture does NOT apply. Normal move executes.
-    assert board[0][2] == "wR"
-    assert board[0][0] == "."
+    assert board[0][2] == WHITE_ROOK
+    assert board[0][0] is None
     assert game_over is False
 
 

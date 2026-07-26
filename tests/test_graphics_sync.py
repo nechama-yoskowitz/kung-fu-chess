@@ -13,6 +13,7 @@ import pytest
 from game.events import EventBus, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
+from game.model.piece import WHITE_ROOK, WHITE_BISHOP, BLACK_ROOK, WHITE_PAWN, WHITE_QUEEN
 from game.realtime.motion import PendingMove
 
 
@@ -52,13 +53,13 @@ class TestNormalArrival:
         init_board = [["wR", ".", ".", "."]]
         sync.initialize(init_board)
 
-        pending = [_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)]
+        pending = [_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)]
         sync.sync_movements(pending)
         assert gm.graphic_pieces[0].is_moving
 
         # Simulate engine publishing arrival event
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
 
@@ -74,10 +75,10 @@ class TestNormalArrival:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([["wR", ".", ".", "."]])
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
 
@@ -91,10 +92,10 @@ class TestNormalArrival:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([["wR", ".", ".", "."]])
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
 
@@ -107,14 +108,14 @@ class TestNormalArrival:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([["wR", ".", ".", "."]])
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         # Partially advance graphic movement
         gm.graphic_pieces[0].update(500)
         assert gm.graphic_pieces[0].is_moving
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
 
@@ -132,10 +133,10 @@ class TestCapture:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([["wR", ".", ".", "."]])
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="captured",
+            sequence_id=0, piece=WHITE_ROOK, outcome="captured",
             final_row=None, final_col=None, promoted_to=None,
         ))
 
@@ -165,11 +166,11 @@ class TestCapture:
         sync.initialize([["wR", ".", ".", "bR"]])
 
         # wR moves to capture bR at (0,3)
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         # Engine resolves: wR arrived at (0,3)
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
 
@@ -191,11 +192,11 @@ class TestStoppedMove:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([["wR", ".", ".", "."]])
-        sync.sync_movements([_make_pending_move("wR", 0, 0, 0, 3, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0)])
 
         # Engine says piece stopped at (0,2)
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="stopped",
+            sequence_id=0, piece=WHITE_ROOK, outcome="stopped",
             final_row=0, final_col=2, promoted_to=None,
         ))
 
@@ -220,18 +221,18 @@ class TestSameTokenPiecesAssociatedBySequenceId:
 
         # Both rooks move
         moves = [
-            _make_pending_move("wR", 0, 0, 0, 3, seq_id=0),
-            _make_pending_move("wR", 0, 7, 0, 4, seq_id=1),
+            _make_pending_move(WHITE_ROOK, 0, 0, 0, 3, seq_id=0),
+            _make_pending_move(WHITE_ROOK, 0, 7, 0, 4, seq_id=1),
         ]
         sync.sync_movements(moves)
 
         # seq=0 arrives at (0,3), seq=1 stopped at (0,5)
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wR", outcome="arrived",
+            sequence_id=0, piece=WHITE_ROOK, outcome="arrived",
             final_row=0, final_col=3, promoted_to=None,
         ))
         bus.publish(MoveResolved(
-            sequence_id=1, piece="wR", outcome="stopped",
+            sequence_id=1, piece=WHITE_ROOK, outcome="stopped",
             final_row=0, final_col=5, promoted_to=None,
         ))
 
@@ -249,11 +250,11 @@ class TestPromotion:
         sync = GraphicsSynchronizer(gm, event_bus=bus)
 
         sync.initialize([[".", "."], ["wP", "."]])
-        sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
+        sync.sync_movements([_make_pending_move(WHITE_PAWN, 1, 0, 0, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         assert len(gm.graphic_pieces) == 1

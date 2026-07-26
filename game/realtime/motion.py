@@ -1,16 +1,13 @@
 from dataclasses import dataclass
-from typing import Union
 
 from game.model.piece import Piece, PieceType
-from game.model.pieces import get_type
-from game.model.constants import PIECE_KNIGHT
 
 
 @dataclass(frozen=True)
 class PendingMove:
     """A move that started but has not reached its destination yet."""
 
-    piece: Union[Piece, str]
+    piece: Piece
     from_row: int
     from_col: int
     to_row: int
@@ -24,7 +21,7 @@ class PendingMove:
 class ActiveJump:
     """A piece that is currently airborne."""
 
-    piece: Union[Piece, str]
+    piece: Piece
     row: int
     col: int
     expires_at: int
@@ -59,7 +56,7 @@ def get_airborne_piece_at(active_jumps, row, col):
 class ActiveCooldown:
     """A piece that is resting after arriving at its destination."""
 
-    piece: Union[Piece, str]
+    piece: Piece
     row: int
     col: int
     available_at: int
@@ -102,13 +99,8 @@ def compute_path(piece, from_row, from_col, to_row, to_col):
     For king/pawn (1-step): just [destination].
     For pawn (2-step): [intermediate, destination].
     """
-    # Support both Piece objects and legacy string tokens
-    if isinstance(piece, Piece):
-        is_knight = piece.type == PieceType.KNIGHT
-    else:
-        is_knight = get_type(piece) == PIECE_KNIGHT
-
-    if is_knight:
+    # Piece objects provide direct type access
+    if piece.type == PieceType.KNIGHT:
         return [(to_row, to_col)]
 
     row_step = _sign(to_row - from_row)
@@ -145,7 +137,7 @@ class MovementEvent:
     """
 
     sequence_id: int
-    piece: Union[Piece, str]
+    piece: Piece
     row: int
     col: int
     event_time: int

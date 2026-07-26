@@ -206,11 +206,7 @@ class GameEngine:
         # Track king capture for GameEnded event (published later by _transition_to_game_over)
         if is_king(event.captured_piece):
             loser = captured_color
-            # captured_color may be PieceColor or legacy string — normalize
-            if isinstance(loser, PieceColor):
-                winner = PieceColor.WHITE if loser == PieceColor.BLACK else PieceColor.BLACK
-            else:
-                winner = "w" if loser == "b" else "b"
+            winner = PieceColor.WHITE if loser == PieceColor.BLACK else PieceColor.BLACK
             self._pending_game_end = (winner, loser)
             return  # King has value 0, no score update needed
 
@@ -219,14 +215,7 @@ class GameEngine:
         if value == 0:
             return
 
-        # captured_color may be PieceColor or legacy string — handle both
-        if isinstance(captured_color, PieceColor):
-            if captured_color == PieceColor.BLACK:
-                self._white_score += value
-            else:
-                self._black_score += value
+        if captured_color == PieceColor.BLACK:
+            self._white_score += value
         else:
-            if captured_color == "b":
-                self._white_score += value
-            else:
-                self._black_score += value
+            self._black_score += value

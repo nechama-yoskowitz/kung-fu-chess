@@ -1,6 +1,8 @@
 import pytest
 from game.engine.game_engine import GameEngine, MoveResult
 from game.realtime.motion import PendingMove
+from game.model.piece import WHITE_ROOK, WHITE_BISHOP
+from game.io.piece_token_codec import parse_board
 
 
 # ---------------------------------------------------------------------------
@@ -9,7 +11,7 @@ from game.realtime.motion import PendingMove
 
 def make_board(rows):
     """Build a board from a list of space-separated strings."""
-    return [row.split() for row in rows]
+    return parse_board([row.split() for row in rows])
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +32,7 @@ def test_legal_move_creates_one_pending_move():
     engine.request_move(0, 0, 0, 4)
     assert len(engine.pending_moves) == 1
     move = engine.pending_moves[0]
-    assert move.piece == "wR"
+    assert move.piece == WHITE_ROOK
     assert move.from_row == 0
     assert move.from_col == 0
     assert move.to_row == 0
@@ -218,7 +220,7 @@ def test_valid_jump_creates_exactly_one_active_jump():
     assert result is True
     assert len(engine.active_jumps) == 1
     jump = engine.active_jumps[0]
-    assert jump.piece == "wR"
+    assert jump.piece == WHITE_ROOK
     assert jump.row == 0
     assert jump.col == 0
 

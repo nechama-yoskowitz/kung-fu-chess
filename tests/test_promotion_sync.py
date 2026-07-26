@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from game.events import EventBus, MoveResolved
 from game.graphics.graphics_manager import GraphicsManager
 from game.graphics.graphics_synchronizer import GraphicsSynchronizer
+from game.model.piece import WHITE_PAWN, WHITE_QUEEN, BLACK_PAWN, BLACK_QUEEN
 from game.realtime.motion import PendingMove
 
 
@@ -50,8 +51,8 @@ class TestWhitePawnPromotion:
         sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         assert len(gm.graphic_pieces) == 1
@@ -66,8 +67,8 @@ class TestWhitePawnPromotion:
         sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         gp = gm.graphic_pieces[0]
@@ -89,8 +90,8 @@ class TestBlackPawnPromotion:
         sync.sync_movements([_make_pending_move("bP", 2, 0, 3, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="bP", outcome="arrived",
-            final_row=3, final_col=0, promoted_to="bQ",
+            sequence_id=0, piece=BLACK_PAWN, outcome="arrived",
+            final_row=3, final_col=0, promoted_to=BLACK_QUEEN,
         ))
 
         assert len(gm.graphic_pieces) == 1
@@ -109,8 +110,8 @@ class TestPromotionNoDuplicate:
         sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         assert len(gm.graphic_pieces) == 1
@@ -130,8 +131,8 @@ class TestPromotionAnimationReloaded:
         sprite_manager.get_animation_data.reset_mock()
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         calls = sprite_manager.get_animation_data.call_args_list
@@ -154,8 +155,8 @@ class TestNonPromotedPiecesUnchanged:
         sync.sync_movements([_make_pending_move("wP", 1, 0, 0, 0, seq_id=0)])
 
         bus.publish(MoveResolved(
-            sequence_id=0, piece="wP", outcome="arrived",
-            final_row=0, final_col=0, promoted_to="wQ",
+            sequence_id=0, piece=WHITE_PAWN, outcome="arrived",
+            final_row=0, final_col=0, promoted_to=WHITE_QUEEN,
         ))
 
         assert len(gm.graphic_pieces) == 2

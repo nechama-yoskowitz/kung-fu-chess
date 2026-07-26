@@ -1,26 +1,14 @@
 """
 Domain piece helpers — provides a uniform API for querying pieces.
 
-TEMPORARY DUAL-MODE SUPPORT:
-During the migration from raw string tokens ("wR", "bK", ".") to domain
-Piece objects, these helpers accept BOTH representations. Once all callers
-are migrated to use Piece objects, the string-handling branches will be
-removed. Do not add new string-based logic elsewhere.
-
-After migration is complete:
-- Remove all `isinstance(piece, str)` branches
-- Remove EMPTY_CELL import
-- Remove string indexing
+These helpers accept both Piece objects and legacy string tokens because
+the client-side controller operates on string boards received from the
+network protocol. Once the client converts to domain boards, the string
+branches can be removed.
 """
 
 from game.model.constants import EMPTY_CELL, PIECE_KING, PIECE_PAWN, PIECE_QUEEN
 from game.model.piece import Piece, PieceColor, PieceType
-
-
-# ─── Color constants for comparison (used by callers like rules.py) ────────────
-# These map to PieceColor but are kept for backward compat during migration.
-_COLOR_WHITE = "w"
-_COLOR_BLACK = "b"
 
 
 def get_color(piece):
@@ -28,13 +16,13 @@ def get_color(piece):
     Returns the color of a piece.
 
     For Piece objects: returns PieceColor enum value.
-    For legacy strings: returns 'w' or 'b', or None for empty cell.
+    For legacy strings (client boundary): returns 'w' or 'b', or None for empty.
     """
     if piece is None:
         return None
     if isinstance(piece, Piece):
         return piece.color
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     if piece == EMPTY_CELL:
         return None
     return piece[0]
@@ -45,13 +33,13 @@ def get_type(piece):
     Returns the type of a piece.
 
     For Piece objects: returns PieceType enum value.
-    For legacy strings: returns 'K', 'Q', etc., or None for empty cell.
+    For legacy strings (client boundary): returns 'K', 'Q', etc.
     """
     if piece is None:
         return None
     if isinstance(piece, Piece):
         return piece.type
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     if piece == EMPTY_CELL:
         return None
     return piece[1]
@@ -63,7 +51,7 @@ def is_empty(piece):
         return True
     if isinstance(piece, Piece):
         return False
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     return piece == EMPTY_CELL
 
 
@@ -80,7 +68,7 @@ def is_king(piece):
         return False
     if isinstance(piece, Piece):
         return piece.type == PieceType.KING
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     return get_type(piece) == PIECE_KING
 
 
@@ -90,7 +78,7 @@ def is_pawn(piece):
         return False
     if isinstance(piece, Piece):
         return piece.type == PieceType.PAWN
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     return get_type(piece) == PIECE_PAWN
 
 
@@ -100,18 +88,13 @@ def is_queen(piece):
         return False
     if isinstance(piece, Piece):
         return piece.type == PieceType.QUEEN
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     return get_type(piece) == PIECE_QUEEN
 
 
 def make_piece(color, piece_type):
-    """
-    Create a piece from color and type.
-
-    For PieceColor + PieceType: returns a Piece object.
-    For legacy string color + string type: returns a legacy string token.
-    """
+    """Create a Piece from PieceColor and PieceType."""
     if isinstance(color, PieceColor) and isinstance(piece_type, PieceType):
         return Piece(color, piece_type)
-    # --- TEMPORARY: legacy string support ---
+    # Client boundary: legacy string support
     return color + piece_type
