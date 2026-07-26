@@ -165,7 +165,7 @@ class ServerMessageProcessor:
         # Step 2: Update graphics to match the authoritative board.
         if outcome == "captured":
             # The mover itself was captured — remove its GraphicPiece.
-            if gp and gp in self._gm.graphic_pieces:
+            if gp and self._gm.has_piece(gp):
                 self._gm.remove_piece(gp)
         else:
             # The mover arrived/stopped — snap it to the final cell.
@@ -235,7 +235,7 @@ class ServerMessageProcessor:
                 to_remove.append(gp)
 
         for gp in to_remove:
-            if gp in self._gm.graphic_pieces:
+            if self._gm.has_piece(gp):
                 self._gm.remove_piece(gp)
 
     def _on_jump_accepted(self, payload: dict) -> None:
@@ -331,7 +331,7 @@ class ServerMessageProcessor:
         """Rebuild graphics to match the authoritative board without duplicates."""
         # Remove pieces no longer on the board
         to_remove = []
-        for gp in self._gm.graphic_pieces:
+        for gp in list(self._gm.graphic_pieces):
             if gp.is_moving:
                 continue
             if (
@@ -358,13 +358,4 @@ class ServerMessageProcessor:
                     existing.promote_to(piece)
                     continue
                 # Create new graphic piece
-                from game.graphics.pieces.graphic_piece import GraphicPiece
-                gp = GraphicPiece(
-                    piece=piece,
-                    row=r,
-                    col=c,
-                    sprite_manager=self._gm.sprite_manager,
-                    piece_size=self._gm.piece_size,
-                    initial_state="idle",
-                )
-                self._gm.graphic_pieces.append(gp)
+                self._gm.add_piece(piece=piece, row=r, col=c)

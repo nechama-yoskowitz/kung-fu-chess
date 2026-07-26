@@ -72,6 +72,23 @@ class GraphicsManager:
         """Remove a specific GraphicPiece from the managed list."""
         self.graphic_pieces.remove(graphic_piece)
 
+    def add_piece(self, piece: str, row: int, col: int, initial_state: str = "idle") -> GraphicPiece:
+        """Create and register a new GraphicPiece at the given cell."""
+        gp = GraphicPiece(
+            piece=piece,
+            row=row,
+            col=col,
+            sprite_manager=self.sprite_manager,
+            piece_size=self.piece_size,
+            initial_state=initial_state,
+        )
+        self.graphic_pieces.append(gp)
+        return gp
+
+    def has_piece(self, graphic_piece: GraphicPiece) -> bool:
+        """Return True if the graphic piece is currently managed."""
+        return graphic_piece in self.graphic_pieces
+
     def set_piece_state(
     self,
     row: int,

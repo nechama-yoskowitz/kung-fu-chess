@@ -138,6 +138,11 @@ class GameSession:
     def client_count(self) -> int:
         return len(self._clients)
 
+    @property
+    def player_count(self) -> int:
+        """Number of assigned player slots (max 2)."""
+        return len(self._player_colors)
+
     def get_player_color(self, websocket) -> str | None:
         """Return the assigned color for a client, or None."""
         return self._player_colors.get(websocket)
@@ -145,6 +150,28 @@ class GameSession:
     def get_player_username(self, websocket) -> str | None:
         """Return the username for a client, or None."""
         return self._player_usernames.get(websocket)
+
+    def get_username_for_color(self, color: str) -> str | None:
+        """Return the username of the player assigned to a given color, or None."""
+        for ws, c in self._player_colors.items():
+            if c == color:
+                return self._player_usernames.get(ws)
+        return None
+
+    def restore_player(self, websocket, color: str, username: str) -> None:
+        """
+        Restore a reconnecting player to this session with their original color.
+
+        Used after a disconnect/reconnect cycle to re-associate a new websocket
+        with the reserved player slot.
+        """
+        self._clients.add(websocket)
+        self._player_colors[websocket] = color
+        self._player_usernames[websocket] = username
+
+    def queue_broadcast(self, message: str) -> None:
+        """Queue a message for broadcast to all session members."""
+        self._queue_broadcast(message)
 
     # ─── Message handling ─────────────────────────────────────────────────
 

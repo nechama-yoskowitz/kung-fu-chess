@@ -79,7 +79,7 @@ class GameWebSocketServer:
         # register it in the manager (supports existing tests).
         if session is not None:
             self.session = session
-            self.session_manager._sessions[f"game-{id(session.engine)}"] = session
+            self.session_manager.register_session(session)
         else:
             self.session = None
 
@@ -89,7 +89,7 @@ class GameWebSocketServer:
             self._handle_client, self.host, self.port
         )
         # Start tick loops for any pre-registered sessions
-        for session in self.session_manager._sessions.values():
+        for session in self.session_manager.iter_sessions():
             await session.start_tick_loop()
         self._matchmaking_task = asyncio.create_task(self._matchmaking_loop())
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
@@ -110,7 +110,7 @@ class GameWebSocketServer:
             except asyncio.CancelledError:
                 pass
         # Stop all active session tick loops
-        for session in list(self.session_manager._sessions.values()):
+        for session in list(self.session_manager.iter_sessions()):
             await session.stop_tick_loop()
         if self._server:
             self._server.close()
@@ -154,7 +154,7 @@ class GameWebSocketServer:
         session = self.session_manager.get_session_for_client(websocket)
         if (session and not session.is_viewer(websocket)
                 and not session.engine.game_over
-                and len(session._player_colors) >= 2):
+                and session.player_count >= 2):
             color = session.get_player_color(websocket)
             username = session.get_player_username(websocket) or (auth["username"] if auth else None)
             session_id = self.session_manager.get_session_id(session)
@@ -172,7 +172,7 @@ class GameWebSocketServer:
                 logger.info(f"Reconnect reservation: username={username} color={color} session={session_id}")
                 # Notify remaining session members
                 msg = make_player_disconnected(username, color, int(RECONNECT_TIMEOUT))
-                session._queue_broadcast(msg)
+                session.queue_broadcast(msg)
                 # Remove websocket routing but keep the session/room slot reserved
                 self.session_manager.remove_client(websocket)
                 return
@@ -285,9 +285,7 @@ class GameWebSocketServer:
         logger.info(f"Reconnect success: username={username} color={pending.color} session={pending.session_id}")
 
         # Re-register in the session with the original color
-        session.add_client(websocket)
-        session._player_colors[websocket] = pending.color
-        session._player_usernames[websocket] = username
+        session.restore_player(websocket, pending.color, username)
 
         # Restore session manager routing
         self.session_manager.assign_client_to_session(websocket, session)
@@ -300,7 +298,7 @@ class GameWebSocketServer:
 
         # Notify other players/viewers
         msg = make_player_reconnected(username, pending.color)
-        session._queue_broadcast(msg)
+        session.queue_broadcast(msg)
 
         # Send current game state to the reconnected player
         from game.server.protocol import make_game_state, make_login_success
@@ -395,7 +393,7 @@ class GameWebSocketServer:
                 game_over=room.session.engine.game_over,
             )
             # Queue broadcast to all session members (including Player 1)
-            room.session._queue_broadcast(game_state_msg)
+            room.session.queue_broadcast(game_state_msg)
 
         # Viewers get immediate game_state in their response
         if role == "viewer":
@@ -500,7 +498,7 @@ class GameWebSocketServer:
             black_score=session.engine.black_score,
             game_over=session.engine.game_over,
         )
-        session._queue_broadcast(game_state_msg)
+        session.queue_broadcast(game_state_msg)
         await session.drain_outbox()
 
     def _subscribe_rating_updates(self, session: GameSession, session_id: str) -> None:
@@ -511,15 +509,11 @@ class GameWebSocketServer:
             if self.rating_service is None:
                 return
 
-            winner_username = None
-            loser_username = None
+            winner_color = "w" if event.winner == "w" else "b"
+            loser_color = "b" if winner_color == "w" else "w"
 
-            for ws, color in session._player_colors.items():
-                username = session._player_usernames.get(ws)
-                if color == event.winner:
-                    winner_username = username
-                elif color == event.loser:
-                    loser_username = username
+            winner_username = session.get_username_for_color(winner_color)
+            loser_username = session.get_username_for_color(loser_color)
 
             if not winner_username or not loser_username:
                 return
@@ -546,8 +540,8 @@ class GameWebSocketServer:
                 change=result.loser.change,
             )
 
-            session._queue_broadcast(winner_msg)
-            session._queue_broadcast(loser_msg)
+            session.queue_broadcast(winner_msg)
+            session.queue_broadcast(loser_msg)
 
         session.engine.event_bus.subscribe(GameEnded, on_game_ended)
 
@@ -574,20 +568,14 @@ class GameWebSocketServer:
             from game.server.protocol import make_game_ended
             msg = make_game_ended(winner=winner_color, loser=loser_color)
             session.engine.game_over = True
-            session._queue_broadcast(msg)
+            session.queue_broadcast(msg)
 
             # Update ratings via RatingService
             if self.rating_service:
-                winner_username = None
-                for ws, color in session._player_colors.items():
-                    if color == winner_color:
-                        winner_username = session._player_usernames.get(ws)
-                        break
-
+                winner_username = session.get_username_for_color(winner_color)
                 if winner_username:
-                    session_id = record.session_id
                     self.rating_service.process_game_end(
-                        game_id=session_id,
+                        game_id=record.session_id,
                         winner_username=winner_username,
                         loser_username=record.username,
                     )

@@ -33,6 +33,16 @@ class GameSessionManager:
     def active_session_count(self) -> int:
         return len(self._sessions)
 
+    def register_session(self, session: GameSession) -> str:
+        """Register an externally-created session and return its ID."""
+        session_id = f"game-{id(session.engine)}"
+        self._sessions[session_id] = session
+        return session_id
+
+    def iter_sessions(self):
+        """Iterate over all active sessions (yields GameSession objects)."""
+        yield from self._sessions.values()
+
     def create_session(self) -> GameSession:
         """Create a new GameSession and register it."""
         session = GameSession()
