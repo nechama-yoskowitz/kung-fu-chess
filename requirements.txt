@@ -1,0 +1,16 @@
+# Kung-Fu Chess server runtime dependencies
+# Minimum requirements to run the server in Docker.
+#
+# For local development and tests, also install:
+#   pip install pytest pytest-asyncio pytest-cov
+#
+# Python >= 3.12 required.
+
+# WebSocket server (transport layer)
+websockets==16.1.1
+
+# PostgreSQL synchronous driver (production persistence)
+psycopg[binary]>=3.1,<4
+
+# Redis client with async and sync support
+redis[hiredis]>=5.0,<6

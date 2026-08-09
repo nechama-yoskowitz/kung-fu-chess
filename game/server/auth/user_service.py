@@ -3,6 +3,9 @@ Authentication business logic: registration and credential verification.
 
 Validates input, delegates hashing to PasswordHasher,
 and delegates persistence to UserRepository.
+
+Works with any repository that implements the UserRepository public API
+(currently: UserRepository/SQLite and PostgresUserRepository/PostgreSQL).
 """
 
 from dataclasses import dataclass
@@ -22,14 +25,35 @@ class AuthResult:
     error: str | None = None
 
 
+def _is_unique_violation(exc: Exception) -> bool:
+    """
+    Return True if the exception represents a unique-constraint violation.
+
+    Handles both SQLite (sqlite3.IntegrityError) and
+    PostgreSQL (psycopg.errors.UniqueViolation, which is a subclass of
+    psycopg.IntegrityError). Uses try/except for lazy import so the
+    psycopg package is not required for tests that only use SQLite.
+    """
+    if isinstance(exc, sqlite3.IntegrityError):
+        return True
+    try:
+        import psycopg  # type: ignore[import-not-found]
+        if isinstance(exc, psycopg.IntegrityError):
+            return True
+    except ImportError:
+        pass
+    return False
+
+
 class UserService:
     """
     High-level authentication operations.
 
     Owns validation rules and orchestrates hasher + repository.
+    Accepts any repository that exposes the UserRepository interface.
     """
 
-    def __init__(self, repository: UserRepository):
+    def __init__(self, repository):
         self._repo = repository
         self._hasher = PasswordHasher()
 
@@ -61,9 +85,11 @@ class UserService:
         password_hash = self._hasher.hash(password)
         try:
             user = self._repo.create_user(trimmed, password_hash)
-        except sqlite3.IntegrityError:
-            # Race condition: another caller registered between check and insert
-            return AuthResult(success=False, error="username_taken")
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                # Race condition: another caller registered between check and insert
+                return AuthResult(success=False, error="username_taken")
+            raise
 
         return AuthResult(success=True, user=user)
 

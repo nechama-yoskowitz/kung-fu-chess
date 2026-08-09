@@ -1,0 +1,45 @@
+# ── Python cache ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ── Test infrastructure ───────────────────────────────────────────────────────
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+pytest.ini
+setup.cfg
+pyproject.toml
+
+# ── Development tools ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.egg-info/
+
+# ── Local databases ───────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ── Log files ─────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+*.md
+Server_Design.md
+
+# ── Client/graphics (not needed by server) ────────────────────────────────────
+# game/graphics/ and game/client/ are still needed because server imports
+# game.model, game.engine, etc. transitively — exclude only heavy assets.
+game/graphics/assets/
+
+# ── Entry points not used in Docker ──────────────────────────────────────────
+run_game.py
+main.py
