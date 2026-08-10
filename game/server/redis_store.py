@@ -4,11 +4,17 @@ Redis-backed shared state store for Kung-Fu Chess.
 Stage 2: moves shared temporary metadata that prevents horizontal scaling
 out of per-process dicts and into Redis.
 
-Three logical namespaces:
+Stage 3 additions:
+  kfc:gameserver:<server_id>   — Hash of game server registration/capacity
+  kfc:gameservers:active       — Sorted set: server_id → active_rooms score
+
+Logical namespaces (full list):
   kfc:matchmaking:<username>   — players waiting for a match
   kfc:reconnect:<username>     — disconnected player slots
   kfc:room:<room_id>:server    — which server owns a room
   kfc:player:<username>:room   — which room a player is in
+  kfc:gameserver:<server_id>   — game server registration metadata (Stage 3)
+  kfc:gameservers:active       — active server set ordered by room count (Stage 3)
 
 Live game state (GameSession / GameEngine) stays in-process.
 This module never stores board state, active moves, clocks, or collisions.
@@ -34,6 +40,10 @@ _MATCHMAKING_ENTRY_TTL = 120      # seconds — auto-expire stale queue entries
 _RECONNECT_TTL = 30               # slightly longer than RECONNECT_TIMEOUT
 _ROOM_SERVER_TTL = 3600           # 1 hour — rooms seldom live longer
 _PLAYER_ROOM_TTL = 3600
+_GAMESERVER_TTL = 30              # seconds — server must heartbeat within this window
+
+# Heartbeat interval used by the server process (exported for use in server loop)
+HEARTBEAT_INTERVAL = 10           # seconds
 
 # Key prefix
 _NS = "kfc"
@@ -63,6 +73,15 @@ class ReconnectEntry:
     session_id: str
     disconnect_time: float
     deadline: float
+
+
+@dataclass
+class GameServerInfo:
+    """Metadata for a registered game server instance."""
+    server_id: str
+    active_rooms: int
+    registered_at: float   # time.monotonic()-compatible
+    last_seen: float        # updated on every heartbeat
 
 
 # ─── Redis store ──────────────────────────────────────────────────────────────
@@ -258,6 +277,138 @@ class RedisStore:
         """Remove the player→room mapping."""
         self._r.delete(_key("player", username, "room"))
 
+    # ── Game Server Registry (Stage 3) ────────────────────────────────────
+
+    def server_register(self, server_id: str) -> GameServerInfo:
+        """
+        Register this server instance in the shared registry.
+
+        Writes a hash at kfc:gameserver:<server_id> with an initial
+        active_rooms of 0 and adds it to the active sorted set.
+        Called once at server startup.
+        """
+        now = time.monotonic()
+        info = GameServerInfo(
+            server_id=server_id,
+            active_rooms=0,
+            registered_at=now,
+            last_seen=now,
+        )
+        key = _key("gameserver", server_id)
+        self._r.hset(key, mapping=asdict(info))
+        self._r.expire(key, _GAMESERVER_TTL)
+        # Sorted set score = active_rooms (0 at startup)
+        self._r.zadd(_key("gameservers", "active"), {server_id: 0})
+        logger.info(f"Game server registered: server_id={server_id}")
+        return info
+
+    def server_heartbeat(self, server_id: str) -> None:
+        """
+        Refresh the TTL and last_seen timestamp for this server.
+
+        Must be called at least every _GAMESERVER_TTL seconds to prevent
+        the server from being considered dead.
+        """
+        key = _key("gameserver", server_id)
+        now = time.monotonic()
+        # Only update last_seen if the key still exists
+        if self._r.exists(key):
+            self._r.hset(key, "last_seen", now)
+            self._r.expire(key, _GAMESERVER_TTL)
+        else:
+            # Key expired between heartbeats — re-register with current count
+            active = int(self._r.zscore(_key("gameservers", "active"), server_id) or 0)
+            registered_at = now
+            info = GameServerInfo(
+                server_id=server_id,
+                active_rooms=active,
+                registered_at=registered_at,
+                last_seen=now,
+            )
+            self._r.hset(key, mapping=asdict(info))
+            self._r.expire(key, _GAMESERVER_TTL)
+            logger.warning(f"Re-registered server after missed heartbeat: {server_id}")
+
+    def server_deregister(self, server_id: str) -> None:
+        """Remove this server from the registry (called at clean shutdown)."""
+        self._r.delete(_key("gameserver", server_id))
+        self._r.zrem(_key("gameservers", "active"), server_id)
+        logger.info(f"Game server deregistered: server_id={server_id}")
+
+    def server_list_active(self) -> list[GameServerInfo]:
+        """
+        Return all game servers that currently have a live hash key
+        (i.e. have sent a heartbeat within _GAMESERVER_TTL seconds),
+        sorted by active_rooms ascending (least loaded first).
+        """
+        # Sorted set gives us server_ids ordered by score (active_rooms)
+        members = self._r.zrange(_key("gameservers", "active"), 0, -1, withscores=True)
+        result = []
+        stale = []
+        for server_id, score in members:
+            key = _key("gameserver", server_id)
+            raw = self._r.hgetall(key)
+            if not raw:
+                # Hash expired — server is dead; clean up sorted set entry
+                stale.append(server_id)
+                continue
+            try:
+                info = GameServerInfo(
+                    server_id=raw["server_id"],
+                    active_rooms=int(raw.get("active_rooms", 0)),
+                    registered_at=float(raw.get("registered_at", 0)),
+                    last_seen=float(raw.get("last_seen", 0)),
+                )
+                result.append(info)
+            except (KeyError, ValueError):
+                stale.append(server_id)
+        if stale:
+            for s in stale:
+                self._r.zrem(_key("gameservers", "active"), s)
+        # Sort by active_rooms (score may be slightly stale; hash value is authoritative)
+        result.sort(key=lambda x: x.active_rooms)
+        return result
+
+    def server_increment_rooms(self, server_id: str) -> int:
+        """
+        Atomically increment the active room count for a server.
+        Returns the new count.
+        """
+        key = _key("gameserver", server_id)
+        new_count = self._r.hincrby(key, "active_rooms", 1)
+        # Keep sorted set score in sync
+        self._r.zadd(_key("gameservers", "active"), {server_id: new_count})
+        return int(new_count)
+
+    def server_decrement_rooms(self, server_id: str) -> int:
+        """
+        Atomically decrement the active room count for a server (floor 0).
+        Returns the new count.
+        """
+        key = _key("gameserver", server_id)
+        new_count = self._r.hincrby(key, "active_rooms", -1)
+        if new_count < 0:
+            new_count = 0
+            self._r.hset(key, "active_rooms", 0)
+        self._r.zadd(_key("gameservers", "active"), {server_id: new_count})
+        return int(new_count)
+
+    def server_get_info(self, server_id: str) -> GameServerInfo | None:
+        """Return current metadata for a specific server, or None if not found."""
+        key = _key("gameserver", server_id)
+        raw = self._r.hgetall(key)
+        if not raw:
+            return None
+        try:
+            return GameServerInfo(
+                server_id=raw["server_id"],
+                active_rooms=int(raw.get("active_rooms", 0)),
+                registered_at=float(raw.get("registered_at", 0)),
+                last_seen=float(raw.get("last_seen", 0)),
+            )
+        except (KeyError, ValueError):
+            return None
+
     # ── Health ─────────────────────────────────────────────────────────────
 
     def ping(self) -> bool:
@@ -286,6 +437,7 @@ class NullRedisStore:
         self._rc: dict[str, ReconnectEntry] = {}         # username → entry
         self._room_server: dict[str, str] = {}           # room_id → server_id
         self._player_room: dict[str, str] = {}           # username → room_id
+        self._servers: dict[str, GameServerInfo] = {}    # server_id → info (Stage 3)
 
     # ── Matchmaking ────────────────────────────────────────────────────────
 
@@ -379,6 +531,64 @@ class NullRedisStore:
 
     def player_clear_room(self, username: str) -> None:
         self._player_room.pop(username, None)
+
+    # ── Game Server Registry (Stage 3) ────────────────────────────────────
+
+    def server_register(self, server_id: str) -> GameServerInfo:
+        now = time.monotonic()
+        info = GameServerInfo(
+            server_id=server_id,
+            active_rooms=0,
+            registered_at=now,
+            last_seen=now,
+        )
+        self._servers[server_id] = info
+        return info
+
+    def server_heartbeat(self, server_id: str) -> None:
+        info = self._servers.get(server_id)
+        if info:
+            self._servers[server_id] = GameServerInfo(
+                server_id=info.server_id,
+                active_rooms=info.active_rooms,
+                registered_at=info.registered_at,
+                last_seen=time.monotonic(),
+            )
+
+    def server_deregister(self, server_id: str) -> None:
+        self._servers.pop(server_id, None)
+
+    def server_list_active(self) -> list[GameServerInfo]:
+        return sorted(self._servers.values(), key=lambda x: x.active_rooms)
+
+    def server_increment_rooms(self, server_id: str) -> int:
+        info = self._servers.get(server_id)
+        if info is None:
+            return 0
+        new_count = info.active_rooms + 1
+        self._servers[server_id] = GameServerInfo(
+            server_id=info.server_id,
+            active_rooms=new_count,
+            registered_at=info.registered_at,
+            last_seen=info.last_seen,
+        )
+        return new_count
+
+    def server_decrement_rooms(self, server_id: str) -> int:
+        info = self._servers.get(server_id)
+        if info is None:
+            return 0
+        new_count = max(0, info.active_rooms - 1)
+        self._servers[server_id] = GameServerInfo(
+            server_id=info.server_id,
+            active_rooms=new_count,
+            registered_at=info.registered_at,
+            last_seen=info.last_seen,
+        )
+        return new_count
+
+    def server_get_info(self, server_id: str) -> GameServerInfo | None:
+        return self._servers.get(server_id)
 
     def ping(self) -> bool:
         return True

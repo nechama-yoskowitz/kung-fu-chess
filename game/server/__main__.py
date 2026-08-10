@@ -6,6 +6,11 @@ Starts the WebSocket server with persistence and optional Redis support.
 Stage 2: Redis is now used as a shared store for matchmaking queue entries,
 reconnect metadata, and room/player routing pointers.
 
+Stage 3: introduces a GameAllocator that picks the least-loaded Game Server
+for each new room.  The current server registers itself in Redis on startup
+and sends heartbeats every HEARTBEAT_INTERVAL seconds so the allocator can
+identify live peers.
+
 Repository selection is controlled by KFC_DB_BACKEND:
     sqlite   (default) — SQLite file (local dev)
     postgres           — PostgreSQL server (Docker / production)
@@ -76,6 +81,7 @@ def _build_redis_store(cfg: ServerConfig):
 
     Stage 2: the store is used for matchmaking queue metadata,
     reconnect slots, and room/player routing pointers.
+    Stage 3: also stores game server registration and capacity metadata.
     """
     sid = _server_id()
 
@@ -93,14 +99,37 @@ def _build_redis_store(cfg: ServerConfig):
     return store
 
 
+def _build_allocator(store, sid: str):
+    """
+    Build a GameAllocator backed by the shared store.
+
+    Stage 3: the allocator reads the live server registry from the store and
+    picks the least-loaded Game Server for each new room.
+
+    When Redis is disabled (NullRedisStore), the allocator falls back to
+    NullGameAllocator which always picks the current server — preserving
+    identical behaviour for local dev and all existing tests.
+    """
+    from game.server.redis_store import NullRedisStore
+    if isinstance(store, NullRedisStore):
+        from game.server.game_allocator import NullGameAllocator
+        logger.info(f"Using NullGameAllocator (server_id={sid!r})")
+        return NullGameAllocator(own_server_id=sid)
+
+    from game.server.game_allocator import GameAllocator
+    logger.info(f"Using GameAllocator with RedisStore (server_id={sid!r})")
+    return GameAllocator(store=store, own_server_id=sid)
+
+
 def main() -> None:
     cfg = ServerConfig.from_env()
     setup_logging(level=cfg.log_level, enable_file=True, log_file="server.log")
 
+    sid = _server_id()
     logger.info(
         "Kung-Fu Chess server starting — "
         f"db={cfg.db_backend} redis={cfg.redis_enabled} "
-        f"ws={cfg.ws_host}:{cfg.ws_port} server_id={_server_id()}"
+        f"ws={cfg.ws_host}:{cfg.ws_port} server_id={sid}"
     )
 
     # ── Persistence ───────────────────────────────────────────────────────────
@@ -111,6 +140,9 @@ def main() -> None:
     # ── Shared Redis store (Stage 2) ──────────────────────────────────────────
     store = _build_redis_store(cfg)
 
+    # ── Game Allocator (Stage 3) ──────────────────────────────────────────────
+    allocator = _build_allocator(store, sid)
+
     # ── WebSocket server ──────────────────────────────────────────────────────
     print(f"Kung-Fu Chess server listening on ws://{cfg.ws_host}:{cfg.ws_port}")
     try:
@@ -120,6 +152,7 @@ def main() -> None:
             user_service=user_service,
             rating_service=rating_service,
             store=store,
+            allocator=allocator,
         ))
     except KeyboardInterrupt:
         print("\nServer stopped.")

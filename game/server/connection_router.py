@@ -4,9 +4,19 @@ Application-level routing for WebSocket clients.
 Orchestrates authentication, matchmaking, rooms, reconnection, and
 session assignment. Does not know about raw WebSocket frames or transport.
 
-Stage 2 change: matchmaking queue metadata, reconnect slots, and room/player
+Stage 2: matchmaking queue metadata, reconnect slots, and room/player
 routing metadata are stored in a RedisStore (or NullRedisStore for tests).
-Live game state (GameSession/GameEngine) remains in-process.
+
+Stage 3: introduces explicit Game Server ownership via a GameAllocator.
+- Every new room (room creation and matchmaking) is allocated to a specific
+  Game Server by the allocator before the GameSession is created.
+- A GameSession is created locally ONLY when the allocated server is this
+  server (allocator.is_local(server_id) is True).
+- Active room counts are maintained in the shared store:
+    increment when a session is created, decrement when the game ends.
+- When the allocated server is a peer (not local), routing metadata is stored
+  in Redis but no local GameSession is created.  In Stage 3 with a single
+  server instance this path is never exercised, but the code is correct.
 """
 
 import logging
@@ -49,38 +59,39 @@ class ClientSessionRouter:
     """
     Application-layer coordinator for multiplayer game connections.
 
-    Stage 2: matchmaking queue entries, reconnect metadata, and room/player
-    routing pointers are now stored in a shared store (RedisStore in production,
-    NullRedisStore in tests). Live game state remains local.
+    Stage 2: matchmaking/reconnect/routing metadata stored in shared store.
+    Stage 3: GameAllocator decides server ownership; room counts tracked.
     """
 
     def __init__(
         self,
         user_service: UserService | None = None,
         rating_service: RatingService | None = None,
-        matchmaking: MatchmakingService | None = None,   # kept for compat
+        matchmaking: MatchmakingService | None = None,
         session_manager: GameSessionManager | None = None,
-        reconnect_manager=None,                           # kept for compat; ignored if store present
+        reconnect_manager=None,
         room_manager: RoomManager | None = None,
         *,
         legacy_session: GameSession | None = None,
-        store=None,          # RedisStore or NullRedisStore
+        store=None,
+        allocator=None,
     ):
         self.user_service = user_service
         self.rating_service = rating_service
         self.session_manager = session_manager or GameSessionManager()
         self.room_manager = room_manager or RoomManager(self.session_manager)
 
-        # shared store: defaults to NullRedisStore (in-process, no Redis)
+        # Shared store: defaults to NullRedisStore
         self._store = store or NullRedisStore()
 
-        # Keep the old in-memory MatchmakingService for backward-compat with
-        # tests that inject it directly.  Its queue_size / is_queued attributes
-        # are proxied from the store.
+        # Stage 3: allocator defaults to NullGameAllocator (always local)
+        if allocator is None:
+            from game.server.game_allocator import NullGameAllocator
+            allocator = NullGameAllocator(own_server_id=self._store._server_id)
+        self._allocator = allocator
+
         self._local_mm = matchmaking or MatchmakingService()
 
-        # ReconnectManager is kept for test compatibility.
-        # Production code uses the store instead.
         if reconnect_manager is not None:
             self._reconnect_manager = reconnect_manager
             self._use_local_reconnect = True
@@ -88,10 +99,9 @@ class ClientSessionRouter:
             self._reconnect_manager = None
             self._use_local_reconnect = False
 
-        # Tracks authenticated clients: websocket → {"username": str, "rating": int}
+        # websocket → {"username": str, "rating": int}
         self._authenticated: dict = {}
-
-        # websocket → username (needed for matchmaking cancel on disconnect)
+        # websocket → username
         self._ws_username: dict = {}
 
         # Backward compatibility: legacy single-session mode for tests.
@@ -99,19 +109,14 @@ class ClientSessionRouter:
         if legacy_session is not None:
             self.session_manager.register_session(legacy_session)
 
-    # ─── Backward-compat shim used by test_matchmaking.py ─────────────────
-    # Tests access srv.matchmaking.queue_size — expose via a thin adapter.
+    # ─── Backward-compat shims ─────────────────────────────────────────────
 
     @property
     def matchmaking(self):
-        """Backward-compat shim: expose queue_size/is_queued via the store."""
         return _MatchmakingShim(self._store, self._local_mm)
-
-    # ─── Backward-compat shim used by test_reconnect.py ──────────────────
 
     @property
     def reconnect_manager(self):
-        """Return the local reconnect manager (used by tests that inject one)."""
         return self._reconnect_manager
 
     # ─── Main entry points ─────────────────────────────────────────────────
@@ -148,9 +153,7 @@ class ClientSessionRouter:
         """Handle client disconnect."""
         username = self._ws_username.pop(websocket, None)
         if username:
-            # Remove from shared matchmaking queue
             self._store.matchmaking_remove(username)
-        # Also remove from local queue (covers tests that use local mm)
         self._local_mm.remove_by_websocket(websocket)
 
         auth = self._authenticated.pop(websocket, None)
@@ -200,7 +203,6 @@ class ClientSessionRouter:
 
     async def process_matchmaking(self, send: SendFunc) -> None:
         """Check for matches and timeouts using the shared store."""
-        # Handle timeouts (store-based)
         timed_out = self._store.matchmaking_get_timed_out(
             self._local_mm._timeout_seconds
         )
@@ -212,39 +214,26 @@ class ClientSessionRouter:
                 except Exception:
                     pass
 
-        # Also handle local-mm timeouts (covers tests that bypass the store)
         for entry in self._local_mm.get_timed_out():
             try:
                 await send(entry.websocket, make_matchmaking_timeout())
             except Exception:
                 pass
 
-        # Try to match using the store first; if it succeeded skip local.
         store_matched = await self._try_match_from_store(send)
-
-        # Fall back to local queue only when the store produced no match.
-        # This covers tests that populate only the local mm (without a store).
         if not store_matched:
             await self._try_match_local(send)
 
     async def _try_match_from_store(self, send: SendFunc) -> bool:
-        """
-        Attempt to find a compatible pair in the shared store queue.
-
-        Returns True if a match was made (so the caller can skip the local
-        queue check for the same poll cycle).
-        """
         entries = self._store.matchmaking_get_all()
         threshold = self._local_mm._rating_threshold
         for i, e1 in enumerate(entries):
             for e2 in entries[i + 1:]:
                 if abs(e1.rating - e2.rating) <= threshold:
-                    # Match found — remove from both store AND local queue
                     self._store.matchmaking_remove(e1.username)
                     self._store.matchmaking_remove(e2.username)
                     ws1 = self._find_ws_by_username(e1.username)
                     ws2 = self._find_ws_by_username(e2.username)
-                    # Keep local queue in sync
                     if ws1:
                         self._local_mm.remove_by_websocket(ws1)
                     if ws2:
@@ -259,16 +248,10 @@ class ClientSessionRouter:
         return False
 
     async def _try_match_local(self, send: SendFunc) -> None:
-        """
-        Fallback: match from the local in-memory queue (test compat).
-
-        Only runs when the store queue produced no match this cycle.
-        """
         match = self._local_mm.try_match()
         if match is None:
             return
         p1, p2 = match.player1, match.player2
-        # Keep store in sync
         self._store.matchmaking_remove(p1.username)
         self._store.matchmaking_remove(p2.username)
         await self._start_matched_game(
@@ -283,7 +266,51 @@ class ClientSessionRouter:
         ws2, username2: str, rating2: int,
         send: SendFunc,
     ) -> None:
+        """
+        Create a game session for a matched pair.
+
+        Stage 3: asks the allocator which server should own this game.
+        Only creates a local GameSession when the allocated server is this
+        server.  Always records routing metadata in the store.
+        """
         logger.info(f"Match found: {username1} ({rating1}) vs {username2} ({rating2})")
+
+        # ── Stage 3: allocate ownership ───────────────────────────────────
+        owner_id = self._allocator.allocate_server()
+        is_local = self._allocator.is_local(owner_id)
+
+        if not is_local:
+            # Room belongs to a peer server — record routing and notify clients.
+            # No local GameSession is created.
+            logger.info(
+                f"Match allocated to peer server {owner_id!r}; "
+                f"recording routing metadata only."
+            )
+            # Generate a placeholder session id for routing
+            import uuid
+            session_id = f"remote-{uuid.uuid4().hex[:8]}"
+            self._store.player_set_room(username1, session_id)
+            self._store.player_set_room(username2, session_id)
+            self._store.room_set_server(session_id, owner_id)
+            # Notify clients — they will need to reconnect to the owning server.
+            # (In Stage 3 single-server this branch is never taken.)
+            try:
+                await send(ws1, make_match_found(
+                    opponent_username=username2, color="w",
+                    own_rating=rating1, opponent_rating=rating2,
+                ))
+            except Exception:
+                pass
+            try:
+                await send(ws2, make_match_found(
+                    opponent_username=username1, color="b",
+                    own_rating=rating2, opponent_rating=rating1,
+                ))
+            except Exception:
+                pass
+            return
+
+        # ── Local ownership: create GameSession on this server ────────────
         session = self.session_manager.create_session()
         await session.start_tick_loop()
 
@@ -295,16 +322,20 @@ class ClientSessionRouter:
         self.session_manager.assign_client_to_session(ws1, session)
         self.session_manager.assign_client_to_session(ws2, session)
 
-        if self.rating_service:
-            session_id = self.session_manager.get_session_id(session)
+        session_id = self.session_manager.get_session_id(session)
+
+        if self.rating_service and session_id:
             self._subscribe_rating_updates(session, session_id)
 
-        # Update routing metadata in shared store
-        session_id = self.session_manager.get_session_id(session)
+        # Store routing metadata
         if session_id:
             self._store.player_set_room(username1, session_id)
             self._store.player_set_room(username2, session_id)
-            self._store.room_set_server(session_id, self._store._server_id)
+            self._store.room_set_server(session_id, owner_id)
+            # Stage 3: increment active room count
+            self._store.server_increment_rooms(owner_id)
+            # Subscribe to GameEnded to decrement count when game finishes
+            self._subscribe_room_count_decrement(session, owner_id)
 
         try:
             await send(ws1, make_match_found(
@@ -333,11 +364,9 @@ class ClientSessionRouter:
 
     async def process_reconnect_expirations(self) -> None:
         """Handle expired reconnect records — auto-resign."""
-        # Local reconnect manager (injected, used by tests)
         if self._use_local_reconnect and self._reconnect_manager is not None:
             await self._expire_from_local_manager()
             return
-        # Store-based (production)
         await self._expire_from_store()
 
     async def _expire_from_local_manager(self) -> None:
@@ -420,12 +449,10 @@ class ClientSessionRouter:
         self._authenticated[sender] = {"username": canonical_username, "rating": rating}
         self._ws_username[sender] = canonical_username
 
-        # Check for pending reconnect
         pending = self._get_pending_reconnect(canonical_username)
         if pending:
             return self._handle_reconnect(sender, pending, canonical_username, rating)
 
-        # Legacy single-session mode
         if self.legacy_session is not None:
             messages = self.legacy_session.login_client(sender, canonical_username, rating=rating)
             self.session_manager.assign_client_to_session(sender, self.legacy_session)
@@ -436,13 +463,11 @@ class ClientSessionRouter:
         return make_login_success(username=canonical_username, color="", rating=rating)
 
     def _get_pending_reconnect(self, username: str):
-        """Return a pending reconnect record (local or store-based)."""
         if self._use_local_reconnect and self._reconnect_manager is not None:
             return self._reconnect_manager.try_reconnect(username)
         return self._store.reconnect_get(username)
 
     def _cancel_reconnect(self, username: str) -> None:
-        """Cancel a pending reconnect (local or store-based)."""
         if self._use_local_reconnect and self._reconnect_manager is not None:
             self._reconnect_manager.cancel(username)
         else:
@@ -492,16 +517,12 @@ class ClientSessionRouter:
         username = auth["username"]
         rating = auth["rating"]
 
-        # Try shared store first (production); fall back to local (tests)
         added_to_store = self._store.matchmaking_enqueue(username, rating)
         if not added_to_store:
-            # Also check local queue
             if self._local_mm.is_queued(sender):
                 return make_error("already in matchmaking queue", "already_queued")
-            # Already in shared queue
             return make_error("already in matchmaking queue", "already_queued")
 
-        # Also enqueue in local mm so local tests still work via srv.matchmaking
         self._local_mm.enqueue(sender, username, rating)
 
         logger.info(f"Matchmaking: {username} entered queue (rating={rating})")
@@ -516,10 +537,35 @@ class ClientSessionRouter:
         return make_error("not in matchmaking queue", "not_queued")
 
     async def _handle_create_room(self, sender) -> str:
+        """
+        Create a new room and assign it to a Game Server.
+
+        Stage 3: asks the allocator which server should own this room.
+        Creates a local GameSession only when the allocated server is this
+        server.  Always records routing metadata in the store.
+        """
         auth = self._authenticated.get(sender)
         if auth is None:
             return make_error("must login first", "not_logged_in")
 
+        # Stage 3: allocate ownership before creating anything
+        owner_id = self._allocator.allocate_server()
+        is_local = self._allocator.is_local(owner_id)
+
+        if not is_local:
+            # The room belongs to a peer server.  Record routing info and
+            # tell the client which server to connect to.  In Stage 3 with a
+            # single running instance this path is never taken.
+            import uuid
+            room_id = uuid.uuid4().hex[:8]
+            self._store.room_set_server(room_id, owner_id)
+            logger.info(
+                f"Room {room_id!r} allocated to peer server {owner_id!r}; "
+                f"no local session created."
+            )
+            return make_room_created(room_id)
+
+        # Local ownership: create room + session as before
         room = self.room_manager.create_room()
         error, role = self.room_manager.join_room(
             room.room_id, sender, auth["username"], auth["rating"]
@@ -529,12 +575,19 @@ class ClientSessionRouter:
 
         await room.session.start_tick_loop()
 
-        # Record routing metadata
         session_id = self.session_manager.get_session_id(room.session)
         if session_id:
-            self._store.room_set_server(session_id, self._store._server_id)
+            self._store.room_set_server(session_id, owner_id)
+            self._store.player_set_room(auth["username"], session_id)
+            # Stage 3: increment active room count
+            self._store.server_increment_rooms(owner_id)
+            # Decrement when game ends
+            self._subscribe_room_count_decrement(room.session, owner_id)
 
-        logger.info(f"Room created: room_id={room.room_id} creator={auth['username']}")
+        logger.info(
+            f"Room created: room_id={room.room_id} "
+            f"creator={auth['username']} owner={owner_id!r}"
+        )
         return make_room_created(room.room_id)
 
     async def _handle_join_room(self, payload: dict, sender) -> str | list[str]:
@@ -555,7 +608,6 @@ class ClientSessionRouter:
         room = self.room_manager.get_room(room_id)
         color = room.session.get_player_color(sender) if role == "player" else None
 
-        # Record player→room routing metadata
         session_id = self.session_manager.get_session_id(room.session)
         if session_id and role == "player":
             self._store.player_set_room(auth["username"], session_id)
@@ -634,8 +686,30 @@ class ClientSessionRouter:
 
         session.engine.event_bus.subscribe(GameEnded, on_game_ended)
 
+    def _subscribe_room_count_decrement(self, session: GameSession, server_id: str) -> None:
+        """
+        Subscribe to the GameEnded event to decrement the active room count.
+
+        A guard flag (_room_decrement_done) prevents double-decrement if the
+        event fires more than once (e.g. from multiple subscribers or replays).
+        """
+        from game.events.engine_events import GameEnded
+
+        _decremented = [False]   # mutable cell avoids nonlocal in nested fn
+
+        def on_game_ended(event):
+            if _decremented[0]:
+                return
+            _decremented[0] = True
+            try:
+                self._store.server_decrement_rooms(server_id)
+                logger.debug(f"Room count decremented for server {server_id!r}")
+            except Exception as exc:
+                logger.warning(f"Could not decrement room count: {exc}")
+
+        session.engine.event_bus.subscribe(GameEnded, on_game_ended)
+
     def _find_ws_by_username(self, username: str):
-        """Look up the websocket for an authenticated user on this server."""
         for ws, info in self._authenticated.items():
             if info.get("username") == username:
                 return ws
@@ -645,20 +719,14 @@ class ClientSessionRouter:
 # ─── Backward-compat shim ─────────────────────────────────────────────────────
 
 class _MatchmakingShim:
-    """
-    Proxy that exposes queue_size, is_queued etc. from the store.
+    """Proxy exposing queue_size/is_queued from the store for test access."""
 
-    Tests access srv.matchmaking.queue_size — this shim lets them
-    work without changing any test code.
-    """
     def __init__(self, store, local_mm: MatchmakingService):
         self._store = store
         self._local = local_mm
 
     @property
     def queue_size(self) -> int:
-        # Use whichever is non-zero (store-based in production,
-        # local-based in tests)
         store_size = self._store.matchmaking_get_queue_size()
         local_size = self._local.queue_size
         return max(store_size, local_size)

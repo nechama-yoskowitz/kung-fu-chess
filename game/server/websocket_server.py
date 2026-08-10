@@ -6,10 +6,18 @@ Responsible only for:
 - Accepting and closing WebSocket connections
 - Receiving raw frames and delegating to the application router
 - Sending encoded outbound messages
-- Running periodic background tasks (matchmaking, reconnect polls)
+- Running periodic background tasks (matchmaking, reconnect polls,
+  game-server heartbeat)
 
 All application logic (authentication, matchmaking decisions, session routing,
-room management, reconnect orchestration) is handled by ClientSessionRouter.
+room management, reconnect orchestration, ownership allocation) is handled by
+ClientSessionRouter.
+
+Stage 3 additions:
+- Accepts an ``allocator`` argument (GameAllocator or NullGameAllocator).
+- On start(): registers this server instance in the shared store and starts a
+  heartbeat loop that refreshes the TTL every HEARTBEAT_INTERVAL seconds.
+- On stop(): deregisters this server from the shared store.
 """
 
 import asyncio
@@ -24,6 +32,7 @@ from game.server.game_session_manager import GameSessionManager
 from game.server.matchmaking.matchmaking_service import MatchmakingService
 from game.server.rating.rating_service import RatingService
 from game.server.reconnect_manager import ReconnectManager
+from game.server.redis_store import HEARTBEAT_INTERVAL, NullRedisStore
 from game.server.room_manager import RoomManager
 
 logger = logging.getLogger(__name__)
@@ -47,19 +56,31 @@ class GameWebSocketServer:
                  matchmaking: MatchmakingService | None = None,
                  session_manager: GameSessionManager | None = None,
                  reconnect_manager: ReconnectManager | None = None,
-                 store=None):          # Stage 2: RedisStore or NullRedisStore
+                 store=None,        # Stage 2: RedisStore or NullRedisStore
+                 allocator=None):   # Stage 3: GameAllocator or NullGameAllocator
         self.host = host
         self.port = port
         self._server = None
         self._connected: set = set()
         self._matchmaking_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task | None = None   # Stage 3
 
         # Build collaborators
         sm = session_manager or GameSessionManager()
         mm = matchmaking or MatchmakingService()
         rm = reconnect_manager or ReconnectManager()
         room_mgr = RoomManager(sm)
+
+        # Shared store — default to NullRedisStore when not provided
+        resolved_store = store or NullRedisStore()
+        self._store = resolved_store
+
+        # Stage 3: allocator defaults to NullGameAllocator (always local)
+        if allocator is None:
+            from game.server.game_allocator import NullGameAllocator
+            allocator = NullGameAllocator(own_server_id=resolved_store._server_id)
+        self._allocator = allocator
 
         # Application router owns all business logic
         self.router = ClientSessionRouter(
@@ -70,7 +91,8 @@ class GameWebSocketServer:
             reconnect_manager=rm,
             room_manager=room_mgr,
             legacy_session=session,
-            store=store,              # Stage 2: pass through to router
+            store=resolved_store,
+            allocator=self._allocator,   # Stage 3
         )
 
         # Expose collaborators for test access (read-only inspection)
@@ -93,6 +115,11 @@ class GameWebSocketServer:
             await session.start_tick_loop()
         self._matchmaking_task = asyncio.create_task(self._matchmaking_loop())
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+        # Stage 3: register this server and start heartbeat
+        self._register_server()
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
         logger.info(f"Server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
@@ -109,12 +136,44 @@ class GameWebSocketServer:
                 await self._reconnect_task
             except asyncio.CancelledError:
                 pass
+
+        # Stage 3: stop heartbeat and deregister
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        self._deregister_server()
+
         for session in list(self.session_manager.iter_sessions()):
             await session.stop_tick_loop()
         if self._server:
             self._server.close()
             await self._server.wait_closed()
             logger.info("Server stopped")
+
+    # ─── Stage 3: server registration helpers ─────────────────────────────
+
+    def _register_server(self) -> None:
+        """Register this server in the shared store at startup."""
+        try:
+            self._store.server_register(self._allocator.own_server_id)
+            logger.info(
+                f"Game server registered: server_id={self._allocator.own_server_id!r}"
+            )
+        except Exception as exc:
+            logger.warning(f"Could not register server in store: {exc}")
+
+    def _deregister_server(self) -> None:
+        """Remove this server from the shared store at clean shutdown."""
+        try:
+            self._store.server_deregister(self._allocator.own_server_id)
+            logger.info(
+                f"Game server deregistered: server_id={self._allocator.own_server_id!r}"
+            )
+        except Exception as exc:
+            logger.warning(f"Could not deregister server from store: {exc}")
 
     # ─── Transport: connection lifecycle ──────────────────────────────────
 
@@ -170,6 +229,15 @@ class GameWebSocketServer:
             await asyncio.sleep(1.0)
             await self.router.process_reconnect_expirations()
 
+    async def _heartbeat_loop(self) -> None:
+        """Periodically refresh server registration TTL in the shared store."""
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+            try:
+                self._store.server_heartbeat(self._allocator.own_server_id)
+            except Exception as exc:
+                logger.warning(f"Heartbeat failed: {exc}")
+
     # ─── Transport: public inspection ─────────────────────────────────────
 
     @property
@@ -208,13 +276,15 @@ class GameWebSocketServer:
 async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                      user_service: UserService | None = None,
                      rating_service: RatingService | None = None,
-                     store=None) -> None:
+                     store=None,
+                     allocator=None) -> None:
     """Run the server until interrupted."""
     server = GameWebSocketServer(
         host=host, port=port,
         user_service=user_service,
         rating_service=rating_service,
         store=store,
+        allocator=allocator,
     )
     await server.start()
 
