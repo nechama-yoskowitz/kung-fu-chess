@@ -46,7 +46,8 @@ class GameWebSocketServer:
                  rating_service: RatingService | None = None,
                  matchmaking: MatchmakingService | None = None,
                  session_manager: GameSessionManager | None = None,
-                 reconnect_manager: ReconnectManager | None = None):
+                 reconnect_manager: ReconnectManager | None = None,
+                 store=None):          # Stage 2: RedisStore or NullRedisStore
         self.host = host
         self.port = port
         self._server = None
@@ -69,6 +70,7 @@ class GameWebSocketServer:
             reconnect_manager=rm,
             room_manager=room_mgr,
             legacy_session=session,
+            store=store,              # Stage 2: pass through to router
         )
 
         # Expose collaborators for test access (read-only inspection)
@@ -205,12 +207,14 @@ class GameWebSocketServer:
 
 async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                      user_service: UserService | None = None,
-                     rating_service: RatingService | None = None) -> None:
+                     rating_service: RatingService | None = None,
+                     store=None) -> None:
     """Run the server until interrupted."""
     server = GameWebSocketServer(
         host=host, port=port,
         user_service=user_service,
         rating_service=rating_service,
+        store=store,
     )
     await server.start()
 
