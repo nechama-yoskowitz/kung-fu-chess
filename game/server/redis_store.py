@@ -8,11 +8,17 @@ Stage 3 additions:
   kfc:gameserver:<server_id>   — Hash of game server registration/capacity
   kfc:gameservers:active       — Sorted set: server_id → active_rooms score
 
+Stage 4 additions:
+  kfc:room:<room_id>:session   — internal session_id for a room (owner lookup)
+  kfc:player:<username>:server — which server this player is currently connected to
+
 Logical namespaces (full list):
   kfc:matchmaking:<username>   — players waiting for a match
   kfc:reconnect:<username>     — disconnected player slots
   kfc:room:<room_id>:server    — which server owns a room
+  kfc:room:<room_id>:session   — internal session_id for a room (Stage 4)
   kfc:player:<username>:room   — which room a player is in
+  kfc:player:<username>:server — which server this player is connected to (Stage 4)
   kfc:gameserver:<server_id>   — game server registration metadata (Stage 3)
   kfc:gameservers:active       — active server set ordered by room count (Stage 3)
 
@@ -40,6 +46,7 @@ _MATCHMAKING_ENTRY_TTL = 120      # seconds — auto-expire stale queue entries
 _RECONNECT_TTL = 30               # slightly longer than RECONNECT_TIMEOUT
 _ROOM_SERVER_TTL = 3600           # 1 hour — rooms seldom live longer
 _PLAYER_ROOM_TTL = 3600
+_PLAYER_SERVER_TTL = 3600         # Stage 4: connection server mapping
 _GAMESERVER_TTL = 30              # seconds — server must heartbeat within this window
 
 # Heartbeat interval used by the server process (exported for use in server loop)
@@ -277,6 +284,34 @@ class RedisStore:
         """Remove the player→room mapping."""
         self._r.delete(_key("player", username, "room"))
 
+    # ── Stage 4: room→session mapping ─────────────────────────────────────
+
+    def room_set_session(self, room_id: str, session_id: str) -> None:
+        """Record the internal session_id for a room (owner-server only)."""
+        self._r.setex(_key("room", room_id, "session"), _ROOM_SERVER_TTL, session_id)
+
+    def room_get_session(self, room_id: str) -> str | None:
+        """Return the internal session_id for a room, or None."""
+        return self._r.get(_key("room", room_id, "session"))
+
+    def room_clear_session(self, room_id: str) -> None:
+        """Remove the room→session mapping."""
+        self._r.delete(_key("room", room_id, "session"))
+
+    # ── Stage 4: player→connection-server mapping ──────────────────────────
+
+    def player_set_server(self, username: str, server_id: str) -> None:
+        """Record which server this player's WebSocket is connected to."""
+        self._r.setex(_key("player", username, "server"), _PLAYER_SERVER_TTL, server_id)
+
+    def player_get_server(self, username: str) -> str | None:
+        """Return the server_id where this player is currently connected, or None."""
+        return self._r.get(_key("player", username, "server"))
+
+    def player_clear_server(self, username: str) -> None:
+        """Remove the player→server mapping (on disconnect)."""
+        self._r.delete(_key("player", username, "server"))
+
     # ── Game Server Registry (Stage 3) ────────────────────────────────────
 
     def server_register(self, server_id: str) -> GameServerInfo:
@@ -436,7 +471,9 @@ class NullRedisStore:
         self._mm_order: list[str] = []                   # insertion order
         self._rc: dict[str, ReconnectEntry] = {}         # username → entry
         self._room_server: dict[str, str] = {}           # room_id → server_id
+        self._room_session: dict[str, str] = {}          # room_id → session_id (Stage 4)
         self._player_room: dict[str, str] = {}           # username → room_id
+        self._player_server: dict[str, str] = {}         # username → server_id (Stage 4)
         self._servers: dict[str, GameServerInfo] = {}    # server_id → info (Stage 3)
 
     # ── Matchmaking ────────────────────────────────────────────────────────
@@ -531,6 +568,28 @@ class NullRedisStore:
 
     def player_clear_room(self, username: str) -> None:
         self._player_room.pop(username, None)
+
+    # ── Stage 4: room→session mapping ─────────────────────────────────────
+
+    def room_set_session(self, room_id: str, session_id: str) -> None:
+        self._room_session[room_id] = session_id
+
+    def room_get_session(self, room_id: str) -> str | None:
+        return self._room_session.get(room_id)
+
+    def room_clear_session(self, room_id: str) -> None:
+        self._room_session.pop(room_id, None)
+
+    # ── Stage 4: player→connection-server mapping ──────────────────────────
+
+    def player_set_server(self, username: str, server_id: str) -> None:
+        self._player_server[username] = server_id
+
+    def player_get_server(self, username: str) -> str | None:
+        return self._player_server.get(username)
+
+    def player_clear_server(self, username: str) -> None:
+        self._player_server.pop(username, None)
 
     # ── Game Server Registry (Stage 3) ────────────────────────────────────
 

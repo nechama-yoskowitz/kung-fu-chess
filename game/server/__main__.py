@@ -102,13 +102,6 @@ def _build_redis_store(cfg: ServerConfig):
 def _build_allocator(store, sid: str):
     """
     Build a GameAllocator backed by the shared store.
-
-    Stage 3: the allocator reads the live server registry from the store and
-    picks the least-loaded Game Server for each new room.
-
-    When Redis is disabled (NullRedisStore), the allocator falls back to
-    NullGameAllocator which always picks the current server — preserving
-    identical behaviour for local dev and all existing tests.
     """
     from game.server.redis_store import NullRedisStore
     if isinstance(store, NullRedisStore):
@@ -119,6 +112,25 @@ def _build_allocator(store, sid: str):
     from game.server.game_allocator import GameAllocator
     logger.info(f"Using GameAllocator with RedisStore (server_id={sid!r})")
     return GameAllocator(store=store, own_server_id=sid)
+
+
+def _build_bus(cfg: ServerConfig, sid: str):
+    """
+    Build an InternalMessageBus for cross-server command routing (Stage 4).
+
+    When Redis is disabled (NullRedisStore), returns NullInternalMessageBus.
+    When Redis is enabled, returns RedisInternalMessageBus.
+    The listener thread is started by GameWebSocketServer.start().
+    """
+    if not cfg.redis_enabled:
+        from game.server.internal_bus import NullInternalMessageBus
+        logger.info(f"Using NullInternalMessageBus (server_id={sid!r})")
+        return NullInternalMessageBus()
+
+    from game.server.internal_bus import RedisInternalMessageBus
+    bus = RedisInternalMessageBus(redis_url=cfg.redis_url, own_server_id=sid)
+    logger.info(f"Using RedisInternalMessageBus (server_id={sid!r})")
+    return bus
 
 
 def main() -> None:
@@ -143,6 +155,9 @@ def main() -> None:
     # ── Game Allocator (Stage 3) ──────────────────────────────────────────────
     allocator = _build_allocator(store, sid)
 
+    # ── Internal Message Bus (Stage 4) ───────────────────────────────────────
+    bus = _build_bus(cfg, sid)
+
     # ── WebSocket server ──────────────────────────────────────────────────────
     print(f"Kung-Fu Chess server listening on ws://{cfg.ws_host}:{cfg.ws_port}")
     try:
@@ -153,6 +168,7 @@ def main() -> None:
             rating_service=rating_service,
             store=store,
             allocator=allocator,
+            bus=bus,
         ))
     except KeyboardInterrupt:
         print("\nServer stopped.")

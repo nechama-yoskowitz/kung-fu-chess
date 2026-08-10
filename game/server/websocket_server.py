@@ -1,23 +1,10 @@
 """
 WebSocket transport layer for Kung-Fu Chess multiplayer.
 
-Responsible only for:
-- Starting/stopping the server
-- Accepting and closing WebSocket connections
-- Receiving raw frames and delegating to the application router
-- Sending encoded outbound messages
-- Running periodic background tasks (matchmaking, reconnect polls,
-  game-server heartbeat)
-
-All application logic (authentication, matchmaking decisions, session routing,
-room management, reconnect orchestration, ownership allocation) is handled by
-ClientSessionRouter.
-
-Stage 3 additions:
-- Accepts an ``allocator`` argument (GameAllocator or NullGameAllocator).
-- On start(): registers this server instance in the shared store and starts a
-  heartbeat loop that refreshes the TTL every HEARTBEAT_INTERVAL seconds.
-- On stop(): deregisters this server from the shared store.
+Stage 4 additions:
+- Accepts a ``bus`` argument (RedisInternalMessageBus or NullInternalMessageBus).
+- On start(): calls router.register_bus_handlers() then starts the bus listener.
+- On stop(): closes the bus.
 """
 
 import asyncio
@@ -29,6 +16,7 @@ from game.server.auth.user_service import UserService
 from game.server.connection_router import ClientSessionRouter
 from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
+from game.server.internal_bus import NullInternalMessageBus
 from game.server.matchmaking.matchmaking_service import MatchmakingService
 from game.server.rating.rating_service import RatingService
 from game.server.reconnect_manager import ReconnectManager
@@ -57,7 +45,8 @@ class GameWebSocketServer:
                  session_manager: GameSessionManager | None = None,
                  reconnect_manager: ReconnectManager | None = None,
                  store=None,        # Stage 2: RedisStore or NullRedisStore
-                 allocator=None):   # Stage 3: GameAllocator or NullGameAllocator
+                 allocator=None,    # Stage 3: GameAllocator or NullGameAllocator
+                 bus=None):         # Stage 4: RedisInternalMessageBus or NullInternalMessageBus
         self.host = host
         self.port = port
         self._server = None
@@ -82,6 +71,9 @@ class GameWebSocketServer:
             allocator = NullGameAllocator(own_server_id=resolved_store._server_id)
         self._allocator = allocator
 
+        # Stage 4: internal bus defaults to NullInternalMessageBus
+        self._bus = bus or NullInternalMessageBus()
+
         # Application router owns all business logic
         self.router = ClientSessionRouter(
             user_service=user_service,
@@ -92,7 +84,8 @@ class GameWebSocketServer:
             room_manager=room_mgr,
             legacy_session=session,
             store=resolved_store,
-            allocator=self._allocator,   # Stage 3
+            allocator=self._allocator,
+            bus=self._bus,           # Stage 4
         )
 
         # Expose collaborators for test access (read-only inspection)
@@ -120,6 +113,11 @@ class GameWebSocketServer:
         self._register_server()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
+        # Stage 4: register bus handlers and start listener
+        self.router.register_bus_handlers()
+        if hasattr(self._bus, "start_listener"):
+            self._bus.start_listener(loop=asyncio.get_running_loop())
+
         logger.info(f"Server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
@@ -145,6 +143,12 @@ class GameWebSocketServer:
             except asyncio.CancelledError:
                 pass
         self._deregister_server()
+
+        # Stage 4: close bus
+        try:
+            self._bus.close()
+        except Exception:
+            pass
 
         for session in list(self.session_manager.iter_sessions()):
             await session.stop_tick_loop()
@@ -277,7 +281,8 @@ async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                      user_service: UserService | None = None,
                      rating_service: RatingService | None = None,
                      store=None,
-                     allocator=None) -> None:
+                     allocator=None,
+                     bus=None) -> None:
     """Run the server until interrupted."""
     server = GameWebSocketServer(
         host=host, port=port,
@@ -285,6 +290,7 @@ async def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
         rating_service=rating_service,
         store=store,
         allocator=allocator,
+        bus=bus,
     )
     await server.start()
 

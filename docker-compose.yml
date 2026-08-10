@@ -1,27 +1,56 @@
-# Kung-Fu Chess — Stage 1 Docker Compose
+# Kung-Fu Chess — Stage 4 Docker Compose
 #
 # Services:
 #   postgres   — persistent user/rating storage
-#   redis      — shared ephemeral state (Stage 2+) and health check target
-#   server     — Kung-Fu Chess WebSocket game server
+#   redis      — shared ephemeral state + internal Pub/Sub message bus
+#   server-1   — Game Server 1  (WebSocket port 8765 on host)
+#   server-2   — Game Server 2  (WebSocket port 8766 on host)
+#
+# Both game servers share PostgreSQL and Redis.
+# They register themselves in Redis on startup and send heartbeats so
+# GameAllocator can pick the least-loaded one for each new room.
+# Cross-server commands travel via Redis Pub/Sub (Stage 4).
 #
 # Run with:
 #   docker compose up --build
 #
-# Environment variables can be overridden in a .env file at the project root.
-# Example .env:
-#   POSTGRES_PASSWORD=changeme
-#   KFC_WS_PORT=8765
+# Environment variables can be overridden in a .env file.
 
-# ── Named volumes (data persists across container restarts) ──────────────────
+# ── Named volumes ─────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
     driver: local
 
+# ── Common server configuration (YAML anchor) ─────────────────────────────────
+x-server-base: &server-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment:
+    KFC_DB_BACKEND: postgres
+    KFC_POSTGRES_DSN: postgresql://kfc:${POSTGRES_PASSWORD:-kfc_secret}@postgres:5432/kungfu_chess
+    KFC_REDIS_ENABLED: "1"
+    KFC_REDIS_URL: redis://redis:6379/0
+    KFC_WS_HOST: "0.0.0.0"
+    KFC_WS_PORT: "8765"
+    KFC_LOG_LEVEL: ${KFC_LOG_LEVEL:-INFO}
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8765' 2>/dev/null"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
 # ── Services ──────────────────────────────────────────────────────────────────
 services:
 
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -32,8 +61,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      # Expose to host for local inspection (psql, pgAdmin, etc.)
-      # Remove this port mapping in production.
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kfc -d kungfu_chess"]
@@ -42,15 +69,12 @@ services:
       retries: 10
       start_period: 10s
 
-  # ── Redis ────────────────────────────────────────────────────────────────────
+  # ── Redis ─────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --save "" --appendonly no
-    # Disable persistence for ephemeral state — we don't need Redis to
-    # persist across restarts in Stage 1.
     ports:
-      # Expose to host for local inspection (redis-cli, RedisInsight, etc.)
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -59,38 +83,32 @@ services:
       retries: 10
       start_period: 5s
 
-  # ── Kung-Fu Chess server ─────────────────────────────────────────────────────
-  server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "${KFC_WS_PORT:-8765}:8765"
+  # ── Game Server 1 ─────────────────────────────────────────────────────────
+  server-1:
+    <<: *server-base
     environment:
-      # Database
       KFC_DB_BACKEND: postgres
       KFC_POSTGRES_DSN: postgresql://kfc:${POSTGRES_PASSWORD:-kfc_secret}@postgres:5432/kungfu_chess
-
-      # Redis
       KFC_REDIS_ENABLED: "1"
       KFC_REDIS_URL: redis://redis:6379/0
-
-      # WebSocket
       KFC_WS_HOST: "0.0.0.0"
       KFC_WS_PORT: "8765"
-
-      # Logging
       KFC_LOG_LEVEL: ${KFC_LOG_LEVEL:-INFO}
-    healthcheck:
-      test: ["CMD-SHELL",
-             "bash -c 'echo > /dev/tcp/localhost/8765' 2>/dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      KFC_SERVER_ID: "server-1"
+    ports:
+      - "8765:8765"
+
+  # ── Game Server 2 ─────────────────────────────────────────────────────────
+  server-2:
+    <<: *server-base
+    environment:
+      KFC_DB_BACKEND: postgres
+      KFC_POSTGRES_DSN: postgresql://kfc:${POSTGRES_PASSWORD:-kfc_secret}@postgres:5432/kungfu_chess
+      KFC_REDIS_ENABLED: "1"
+      KFC_REDIS_URL: redis://redis:6379/0
+      KFC_WS_HOST: "0.0.0.0"
+      KFC_WS_PORT: "8765"
+      KFC_LOG_LEVEL: ${KFC_LOG_LEVEL:-INFO}
+      KFC_SERVER_ID: "server-2"
+    ports:
+      - "8766:8765"   # host:8766 → container:8765

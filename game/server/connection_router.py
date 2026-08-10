@@ -1,31 +1,36 @@
 """
 Application-level routing for WebSocket clients.
 
-Orchestrates authentication, matchmaking, rooms, reconnection, and
-session assignment. Does not know about raw WebSocket frames or transport.
+Stage 4: Adds cross-server command forwarding via InternalMessageBus.
 
-Stage 2: matchmaking queue metadata, reconnect slots, and room/player
-routing metadata are stored in a RedisStore (or NullRedisStore for tests).
+Local flow (unchanged):
+  client → route_message → local GameSession
 
-Stage 3: introduces explicit Game Server ownership via a GameAllocator.
-- Every new room (room creation and matchmaking) is allocated to a specific
-  Game Server by the allocator before the GameSession is created.
-- A GameSession is created locally ONLY when the allocated server is this
-  server (allocator.is_local(server_id) is True).
-- Active room counts are maintained in the shared store:
-    increment when a session is created, decrement when the game ends.
-- When the allocated server is a peer (not local), routing metadata is stored
-  in Redis but no local GameSession is created.  In Stage 3 with a single
-  server instance this path is never exercised, but the code is correct.
+Remote flow (new):
+  client → route_message → internal bus → owner server → GameSession
+                                                        ↓
+  client ←  events channel ← game response ←───────────┘
+
+room_id is now the canonical external identifier stored in Redis.
+session_id remains the internal GameSession lookup key.
+Both are stored in the shared store so tests using either key still pass.
 """
 
 import logging
+import uuid
 from typing import Callable, Awaitable
 
 from game.model.constants import DEFAULT_RATING
 from game.server.auth.user_service import UserService
 from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
+from game.server.internal_bus import (
+    NullInternalMessageBus,
+    commands_channel,
+    events_channel,
+    make_game_command,
+    make_game_response,
+)
 from game.server.matchmaking.matchmaking_service import MatchmakingService
 from game.server.protocol import (
     decode_message,
@@ -54,13 +59,21 @@ logger = logging.getLogger(__name__)
 
 SendFunc = Callable[[object, str], Awaitable[None]]
 
+# Game message types that may need cross-server forwarding
+_GAME_MSG_TYPES = {"move_request", "jump_request", "ping"}
+
 
 class ClientSessionRouter:
     """
     Application-layer coordinator for multiplayer game connections.
 
-    Stage 2: matchmaking/reconnect/routing metadata stored in shared store.
-    Stage 3: GameAllocator decides server ownership; room counts tracked.
+    Stage 4 additions:
+    - bus: InternalMessageBus for cross-server command forwarding.
+    - route_message checks room ownership; forwards to peer if not local.
+    - Handles inbound GameCommand messages (owner side).
+    - Handles inbound GameResponse messages (gateway side).
+    - room_id is now also stored as the routing key alongside session_id.
+    - player→server mapping updated on login/disconnect.
     """
 
     def __init__(
@@ -75,20 +88,22 @@ class ClientSessionRouter:
         legacy_session: GameSession | None = None,
         store=None,
         allocator=None,
+        bus=None,
     ):
         self.user_service = user_service
         self.rating_service = rating_service
         self.session_manager = session_manager or GameSessionManager()
         self.room_manager = room_manager or RoomManager(self.session_manager)
 
-        # Shared store: defaults to NullRedisStore
         self._store = store or NullRedisStore()
 
-        # Stage 3: allocator defaults to NullGameAllocator (always local)
         if allocator is None:
             from game.server.game_allocator import NullGameAllocator
             allocator = NullGameAllocator(own_server_id=self._store._server_id)
         self._allocator = allocator
+
+        # Stage 4: internal message bus (defaults to NullInternalMessageBus)
+        self._bus = bus or NullInternalMessageBus()
 
         self._local_mm = matchmaking or MatchmakingService()
 
@@ -99,12 +114,9 @@ class ClientSessionRouter:
             self._reconnect_manager = None
             self._use_local_reconnect = False
 
-        # websocket → {"username": str, "rating": int}
-        self._authenticated: dict = {}
-        # websocket → username
-        self._ws_username: dict = {}
+        self._authenticated: dict = {}   # websocket → {"username", "rating"}
+        self._ws_username: dict = {}      # websocket → username
 
-        # Backward compatibility: legacy single-session mode for tests.
         self.legacy_session = legacy_session
         if legacy_session is not None:
             self.session_manager.register_session(legacy_session)
@@ -118,6 +130,23 @@ class ClientSessionRouter:
     @property
     def reconnect_manager(self):
         return self._reconnect_manager
+
+    # ─── Stage 4: bus registration ─────────────────────────────────────────
+
+    def register_bus_handlers(self) -> None:
+        """
+        Subscribe this router to its own command and event channels.
+
+        Called once at server startup (after the bus is ready).
+        - commands channel: owner side — process forwarded game messages.
+        - events channel:   gateway side — deliver results back to clients.
+        """
+        own_id = self._allocator.own_server_id
+        self._bus.subscribe(commands_channel(own_id), self._handle_inbound_command)
+        self._bus.subscribe(events_channel(own_id), self._handle_inbound_response)
+        logger.info(
+            f"Router subscribed to bus channels for server {own_id!r}"
+        )
 
     # ─── Main entry points ─────────────────────────────────────────────────
 
@@ -140,6 +169,8 @@ class ClientSessionRouter:
             if msg_type == "leave_room":
                 return self._handle_leave_room(sender)
 
+        # ── Gameplay messages: check local session first, then cross-server ──
+
         session = self.session_manager.get_session_for_client(sender)
         if session:
             return await session.handle_message(raw, sender=sender)
@@ -147,13 +178,227 @@ class ClientSessionRouter:
         if self.legacy_session is not None:
             return await self.legacy_session.handle_message(raw, sender=sender)
 
+        # Stage 4: client not in a local session — check for remote ownership
+        if msg is not None and msg.get("type") in _GAME_MSG_TYPES:
+            forwarded = await self._try_forward_to_owner(msg, sender)
+            if forwarded is not None:
+                return forwarded
+
         return make_error("not in a game session", "no_session")
+
+    # ─── Stage 4: cross-server forwarding (gateway side) ──────────────────
+
+    async def _try_forward_to_owner(self, msg: dict, sender) -> str | None:
+        """
+        If a game message belongs to a remotely-owned room, forward it.
+
+        Returns an immediate error string if routing fails, or None to
+        signal that the message was forwarded (no direct response yet).
+        """
+        auth = self._authenticated.get(sender)
+        if auth is None:
+            return None   # not authenticated → fall through to "no_session"
+
+        username = auth["username"]
+        # Find which room this player is in
+        room_id = self._store.player_get_room(username)
+        if room_id is None:
+            return None
+
+        owner_id = self._store.room_get_server(room_id)
+        if owner_id is None:
+            return None
+
+        own_id = self._allocator.own_server_id
+        if owner_id == own_id:
+            # We are the owner — but the session is missing locally.
+            # This should not happen in normal flow; fall through.
+            return None
+
+        # Remote owner — publish command to its commands channel
+        cmd_msg = make_game_command(
+            source_server=own_id,
+            target_server=owner_id,
+            room_id=room_id,
+            username=username,
+            cmd=msg.get("type", ""),
+            payload=msg.get("payload", {}),
+        )
+        try:
+            await self._bus.publish_async(commands_channel(owner_id), cmd_msg)
+            logger.debug(
+                f"Forwarded {cmd_msg['cmd']!r} for room {room_id!r} "
+                f"to owner {owner_id!r} (request_id={cmd_msg['request_id']!r})"
+            )
+        except Exception as exc:
+            logger.error(f"Bus publish failed for room {room_id!r}: {exc}")
+            return make_error("could not forward command to game server", "routing_error")
+
+        # Return None: response arrives asynchronously via the events channel
+        return None
+
+    # ─── Stage 4: inbound command (owner side) ────────────────────────────
+
+    async def _handle_inbound_command(self, msg: dict) -> None:
+        """
+        Process a GameCommand that arrived from a gateway server.
+
+        We are the authoritative owner.  Find the session, process the
+        message as if the player were local, collect response + broadcasts,
+        and publish a GameResponse back to the source server's events channel.
+        """
+        room_id = msg.get("room_id", "")
+        username = msg.get("username", "")
+        cmd = msg.get("cmd", "")
+        payload = msg.get("payload", {})
+        request_id = msg.get("request_id", "")
+        source_server = msg.get("source_server", "")
+
+        logger.debug(
+            f"Inbound command: cmd={cmd!r} room={room_id!r} "
+            f"user={username!r} from={source_server!r}"
+        )
+
+        # Resolve session via room_id → session_id mapping
+        session = self._resolve_session_by_room(room_id)
+        if session is None:
+            logger.warning(f"Inbound command: no session for room {room_id!r}")
+            resp = make_game_response(
+                source_server=self._allocator.own_server_id,
+                target_server=source_server,
+                room_id=room_id,
+                username=username,
+                request_id=request_id,
+                response=make_error("game session not found", "no_session"),
+                broadcasts=[],
+            )
+            await self._bus.publish_async(events_channel(source_server), resp)
+            return
+
+        # Build a fake wire message so session.handle_message() can parse it
+        from game.server.protocol import encode_message
+        raw = encode_message(cmd, payload)
+
+        # Use a sentinel object as the "sender" since we have no websocket here
+        sentinel = _RemoteSender(username)
+        # Patch the session's player_colors so it recognises the sentinel
+        color = session.get_username_for_color("w")   # find color by username
+        actual_color = None
+        for ws, uname in session._player_usernames.items():
+            if uname == username:
+                actual_color = session._player_colors.get(ws)
+                break
+
+        if actual_color is not None:
+            # Temporarily register sentinel so session can do ownership check
+            session._player_colors[sentinel] = actual_color
+            session._player_usernames[sentinel] = username
+            session._clients.add(sentinel)
+
+        try:
+            direct_response = await session.handle_message(raw, sender=sentinel)
+            broadcasts = session.get_pending_broadcasts()
+        finally:
+            # Always clean up the sentinel
+            session._clients.discard(sentinel)
+            session._player_colors.pop(sentinel, None)
+            session._player_usernames.pop(sentinel, None)
+
+        resp = make_game_response(
+            source_server=self._allocator.own_server_id,
+            target_server=source_server,
+            room_id=room_id,
+            username=username,
+            request_id=request_id,
+            response=direct_response,
+            broadcasts=broadcasts,
+        )
+        await self._bus.publish_async(events_channel(source_server), resp)
+        logger.debug(
+            f"Responded to {cmd!r} for room {room_id!r}: "
+            f"direct={direct_response is not None} broadcasts={len(broadcasts)}"
+        )
+
+    # ─── Stage 4: inbound response (gateway side) ─────────────────────────
+
+    async def _handle_inbound_response(self, msg: dict) -> None:
+        """
+        Process a GameResponse that arrived from the owner server.
+
+        We are the gateway: find the player's websocket and deliver:
+        - the direct response (if any) to the player who sent the command,
+        - the broadcasts to ALL connected clients in that room.
+        """
+        username = msg.get("username", "")
+        room_id = msg.get("room_id", "")
+        direct = msg.get("response")
+        broadcasts = msg.get("broadcasts", [])
+
+        logger.debug(
+            f"Inbound response: room={room_id!r} user={username!r} "
+            f"direct={direct is not None} broadcasts={len(broadcasts)}"
+        )
+
+        # Deliver direct response to the originating client
+        ws = self._find_ws_by_username(username)
+        if ws is not None and direct is not None:
+            try:
+                await ws.send(direct)
+            except Exception as exc:
+                logger.warning(f"Could not send direct response to {username!r}: {exc}")
+
+        # Deliver broadcasts to all clients in that room
+        if broadcasts:
+            await self._broadcast_to_room(room_id, broadcasts)
+
+    async def _broadcast_to_room(self, room_id: str, messages: list[str]) -> None:
+        """Send broadcast messages to all locally-connected members of a room."""
+        room = self.room_manager.get_room(room_id)
+        if room is None:
+            # Try to find connected clients by username via player_get_room reverse
+            # Fall back to sending to any client whose room_id matches
+            for ws, info in list(self._authenticated.items()):
+                uname = info.get("username", "")
+                if self._store.player_get_room(uname) == room_id:
+                    for m in messages:
+                        try:
+                            await ws.send(m)
+                        except Exception:
+                            pass
+            return
+
+        recipients = list(room.players) + list(room.viewers)
+        for ws in recipients:
+            for m in messages:
+                try:
+                    await ws.send(m)
+                except Exception:
+                    pass
+
+    def _resolve_session_by_room(self, room_id: str) -> "GameSession | None":
+        """
+        Find the authoritative GameSession for a room on this server.
+
+        Tries:
+        1. Direct local room lookup by room_id (handles create_room path).
+        2. session_id via room→session mapping in the store (handles matchmaking path).
+        """
+        room = self.room_manager.get_room(room_id)
+        if room is not None:
+            return room.session
+
+        session_id = self._store.room_get_session(room_id)
+        if session_id:
+            return self.session_manager.get_session_by_id(session_id)
+
+        return None
 
     def on_disconnect(self, websocket) -> None:
         """Handle client disconnect."""
         username = self._ws_username.pop(websocket, None)
         if username:
             self._store.matchmaking_remove(username)
+            self._store.player_clear_server(username)   # Stage 4
         self._local_mm.remove_by_websocket(websocket)
 
         auth = self._authenticated.pop(websocket, None)
@@ -202,10 +447,7 @@ class ClientSessionRouter:
     # ─── Periodic processing ───────────────────────────────────────────────
 
     async def process_matchmaking(self, send: SendFunc) -> None:
-        """Check for matches and timeouts using the shared store."""
-        timed_out = self._store.matchmaking_get_timed_out(
-            self._local_mm._timeout_seconds
-        )
+        timed_out = self._store.matchmaking_get_timed_out(self._local_mm._timeout_seconds)
         for entry in timed_out:
             ws = self._find_ws_by_username(entry.username)
             if ws:
@@ -266,34 +508,24 @@ class ClientSessionRouter:
         ws2, username2: str, rating2: int,
         send: SendFunc,
     ) -> None:
-        """
-        Create a game session for a matched pair.
-
-        Stage 3: asks the allocator which server should own this game.
-        Only creates a local GameSession when the allocated server is this
-        server.  Always records routing metadata in the store.
-        """
         logger.info(f"Match found: {username1} ({rating1}) vs {username2} ({rating2})")
 
-        # ── Stage 3: allocate ownership ───────────────────────────────────
         owner_id = self._allocator.allocate_server()
         is_local = self._allocator.is_local(owner_id)
+        own_id = self._allocator.own_server_id
 
         if not is_local:
-            # Room belongs to a peer server — record routing and notify clients.
-            # No local GameSession is created.
-            logger.info(
-                f"Match allocated to peer server {owner_id!r}; "
-                f"recording routing metadata only."
-            )
-            # Generate a placeholder session id for routing
-            import uuid
-            session_id = f"remote-{uuid.uuid4().hex[:8]}"
+            import uuid as _uuid
+            session_id = f"remote-{_uuid.uuid4().hex[:8]}"
             self._store.player_set_room(username1, session_id)
             self._store.player_set_room(username2, session_id)
             self._store.room_set_server(session_id, owner_id)
-            # Notify clients — they will need to reconnect to the owning server.
-            # (In Stage 3 single-server this branch is never taken.)
+            # Stage 4: record which server each player is connected to
+            self._store.player_set_server(username1, own_id)
+            self._store.player_set_server(username2, own_id)
+            logger.info(
+                f"Match allocated to peer {owner_id!r}; routing metadata stored."
+            )
             try:
                 await send(ws1, make_match_found(
                     opponent_username=username2, color="w",
@@ -310,7 +542,7 @@ class ClientSessionRouter:
                 pass
             return
 
-        # ── Local ownership: create GameSession on this server ────────────
+        # Local ownership
         session = self.session_manager.create_session()
         await session.start_tick_loop()
 
@@ -327,14 +559,16 @@ class ClientSessionRouter:
         if self.rating_service and session_id:
             self._subscribe_rating_updates(session, session_id)
 
-        # Store routing metadata
         if session_id:
+            # Stage 4: store both session_id (legacy) and session_id as room id
+            # For matchmaking games the session_id IS the external room key.
             self._store.player_set_room(username1, session_id)
             self._store.player_set_room(username2, session_id)
             self._store.room_set_server(session_id, owner_id)
-            # Stage 3: increment active room count
+            self._store.room_set_session(session_id, session_id)  # identity mapping
+            self._store.player_set_server(username1, own_id)      # Stage 4
+            self._store.player_set_server(username2, own_id)      # Stage 4
             self._store.server_increment_rooms(owner_id)
-            # Subscribe to GameEnded to decrement count when game finishes
             self._subscribe_room_count_decrement(session, owner_id)
 
         try:
@@ -363,7 +597,6 @@ class ClientSessionRouter:
         await session.drain_outbox()
 
     async def process_reconnect_expirations(self) -> None:
-        """Handle expired reconnect records — auto-resign."""
         if self._use_local_reconnect and self._reconnect_manager is not None:
             await self._expire_from_local_manager()
             return
@@ -416,7 +649,7 @@ class ClientSessionRouter:
 
         await session.drain_outbox()
 
-    # ─── Private handlers ──────────────────────────────────────────────────
+    # ─── Private login/room handlers ──────────────────────────────────────
 
     def _handle_login_request(self, payload: dict, sender) -> str | list[str]:
         error = validate_login_request(payload)
@@ -436,7 +669,9 @@ class ClientSessionRouter:
             result = self.user_service.authenticate(username, password)
 
         if not result.success:
-            logger.warning(f"Login failed: username={username} action={action} error={result.error}")
+            logger.warning(
+                f"Login failed: username={username} action={action} error={result.error}"
+            )
             return make_error(
                 result.error or "authentication failed",
                 result.error or "invalid_credentials",
@@ -444,10 +679,13 @@ class ClientSessionRouter:
 
         canonical_username = result.user.username if result.user else username
         rating = result.user.rating if result.user else DEFAULT_RATING
-        logger.info(f"Login success: username={canonical_username} action={action} rating={rating}")
+        logger.info(f"Login success: username={canonical_username} action={action}")
 
         self._authenticated[sender] = {"username": canonical_username, "rating": rating}
         self._ws_username[sender] = canonical_username
+
+        # Stage 4: record which server this player is connected to
+        self._store.player_set_server(canonical_username, self._allocator.own_server_id)
 
         pending = self._get_pending_reconnect(canonical_username)
         if pending:
@@ -477,11 +715,16 @@ class ClientSessionRouter:
         session = self.session_manager.get_session_by_id(pending.session_id)
         if session is None or session.engine.game_over:
             self._cancel_reconnect(username)
-            logger.warning(f"Reconnect failed: username={username} reason=game_no_longer_available")
+            logger.warning(
+                f"Reconnect failed: username={username} reason=game_no_longer_available"
+            )
             return make_error("game no longer available", "reconnect_failed")
 
         self._cancel_reconnect(username)
-        logger.info(f"Reconnect success: username={username} color={pending.color} session={pending.session_id}")
+        logger.info(
+            f"Reconnect success: username={username} color={pending.color} "
+            f"session={pending.session_id}"
+        )
 
         session.restore_player(websocket, pending.color, username)
         self.session_manager.assign_client_to_session(websocket, session)
@@ -495,7 +738,9 @@ class ClientSessionRouter:
         session.queue_broadcast(msg)
 
         messages = [
-            make_login_success(username=username, color=pending.color, rating=rating, reconnected=True),
+            make_login_success(
+                username=username, color=pending.color, rating=rating, reconnected=True
+            ),
             make_game_state(
                 board=session.engine.legacy_board,
                 clock=session.engine.clock,
@@ -524,7 +769,6 @@ class ClientSessionRouter:
             return make_error("already in matchmaking queue", "already_queued")
 
         self._local_mm.enqueue(sender, username, rating)
-
         logger.info(f"Matchmaking: {username} entered queue (rating={rating})")
         return make_matchmaking_started()
 
@@ -537,35 +781,24 @@ class ClientSessionRouter:
         return make_error("not in matchmaking queue", "not_queued")
 
     async def _handle_create_room(self, sender) -> str:
-        """
-        Create a new room and assign it to a Game Server.
-
-        Stage 3: asks the allocator which server should own this room.
-        Creates a local GameSession only when the allocated server is this
-        server.  Always records routing metadata in the store.
-        """
         auth = self._authenticated.get(sender)
         if auth is None:
             return make_error("must login first", "not_logged_in")
 
-        # Stage 3: allocate ownership before creating anything
         owner_id = self._allocator.allocate_server()
         is_local = self._allocator.is_local(owner_id)
+        own_id = self._allocator.own_server_id
 
         if not is_local:
-            # The room belongs to a peer server.  Record routing info and
-            # tell the client which server to connect to.  In Stage 3 with a
-            # single running instance this path is never taken.
-            import uuid
             room_id = uuid.uuid4().hex[:8]
             self._store.room_set_server(room_id, owner_id)
+            self._store.player_set_server(auth["username"], own_id)  # Stage 4
             logger.info(
-                f"Room {room_id!r} allocated to peer server {owner_id!r}; "
-                f"no local session created."
+                f"Room {room_id!r} allocated to peer {owner_id!r}; no local session."
             )
             return make_room_created(room_id)
 
-        # Local ownership: create room + session as before
+        # Local ownership
         room = self.room_manager.create_room()
         error, role = self.room_manager.join_room(
             room.room_id, sender, auth["username"], auth["rating"]
@@ -577,11 +810,13 @@ class ClientSessionRouter:
 
         session_id = self.session_manager.get_session_id(room.session)
         if session_id:
-            self._store.room_set_server(session_id, owner_id)
-            self._store.player_set_room(auth["username"], session_id)
-            # Stage 3: increment active room count
+            # Store BOTH room_id (canonical) and session_id (legacy compat)
+            self._store.room_set_server(room.room_id, owner_id)   # canonical
+            self._store.room_set_server(session_id, owner_id)     # backward compat
+            self._store.room_set_session(room.room_id, session_id)
+            self._store.player_set_room(auth["username"], room.room_id)
+            self._store.player_set_server(auth["username"], own_id)  # Stage 4
             self._store.server_increment_rooms(owner_id)
-            # Decrement when game ends
             self._subscribe_room_count_decrement(room.session, owner_id)
 
         logger.info(
@@ -610,7 +845,7 @@ class ClientSessionRouter:
 
         session_id = self.session_manager.get_session_id(room.session)
         if session_id and role == "player":
-            self._store.player_set_room(auth["username"], session_id)
+            self._store.player_set_room(auth["username"], room_id)
 
         messages = [make_room_joined(room_id, color, role)]
 
@@ -687,15 +922,9 @@ class ClientSessionRouter:
         session.engine.event_bus.subscribe(GameEnded, on_game_ended)
 
     def _subscribe_room_count_decrement(self, session: GameSession, server_id: str) -> None:
-        """
-        Subscribe to the GameEnded event to decrement the active room count.
-
-        A guard flag (_room_decrement_done) prevents double-decrement if the
-        event fires more than once (e.g. from multiple subscribers or replays).
-        """
         from game.events.engine_events import GameEnded
 
-        _decremented = [False]   # mutable cell avoids nonlocal in nested fn
+        _decremented = [False]
 
         def on_game_ended(event):
             if _decremented[0]:
@@ -716,11 +945,27 @@ class ClientSessionRouter:
         return None
 
 
+# ─── Sentinel object for remote command processing ────────────────────────────
+
+class _RemoteSender:
+    """
+    Placeholder used as the 'sender' when processing a forwarded command.
+
+    The real websocket lives on the gateway server.  We only need an
+    object that can be used as a dict key and compared by identity.
+    Equality is intentionally object-identity so each sentinel is unique.
+    """
+
+    def __init__(self, username: str):
+        self.username = username
+
+    def __repr__(self) -> str:
+        return f"<RemoteSender username={self.username!r}>"
+
+
 # ─── Backward-compat shim ─────────────────────────────────────────────────────
 
 class _MatchmakingShim:
-    """Proxy exposing queue_size/is_queued from the store for test access."""
-
     def __init__(self, store, local_mm: MatchmakingService):
         self._store = store
         self._local = local_mm
