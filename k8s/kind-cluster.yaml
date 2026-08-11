@@ -1,0 +1,14 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kungfu-chess
+nodes:
+  - role: control-plane
+    # Map NodePort 30080 (gateway HTTP) to localhost:30080
+    # Map NodePort 30765 (game-server WebSocket) to localhost:30765
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      - containerPort: 30765
+        hostPort: 30765
+        protocol: TCP

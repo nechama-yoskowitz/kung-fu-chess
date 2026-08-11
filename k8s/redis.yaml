@@ -48,7 +48,8 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:7-alpine-amd64
+          imagePullPolicy: IfNotPresent
           # Disable AOF for pure ephemeral mode; enable RDB snapshot for durability
           command:
             - redis-server

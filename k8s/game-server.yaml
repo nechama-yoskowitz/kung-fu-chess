@@ -37,22 +37,22 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  # External-facing ClusterIP service that load-balances across all
-  # game-server pods.  Used by the API Gateway or a future ingress to
-  # send WebSocket connections to any available game server.
+  # External-facing service that load-balances across all game-server pods.
+  # NodePort 30765 maps to host:30765 via kind extraPortMappings.
   name: game-server-lb
   namespace: kungfu-chess
   labels:
     app: game-server
     app.kubernetes.io/part-of: kungfu-chess
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: game-server
   ports:
     - name: websocket
       port: 8765
       targetPort: 8765
+      nodePort: 30765
 ---
 apiVersion: apps/v1
 kind: StatefulSet

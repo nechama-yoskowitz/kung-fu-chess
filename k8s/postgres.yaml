@@ -48,7 +48,8 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: postgres:16-alpine-amd64
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
           env:
