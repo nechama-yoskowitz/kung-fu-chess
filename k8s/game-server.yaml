@@ -1,0 +1,157 @@
+# Game Server — authoritative WebSocket game engine.
+#
+# Uses a StatefulSet so each Pod gets a stable, unique identity
+# (game-server-0, game-server-1, …) that is used directly as
+# KFC_SERVER_ID via the Downward API.  This avoids any need to
+# hardcode server-1/server-2 in the manifest — Kubernetes provides
+# the identity automatically through the pod name.
+#
+# Scale replicas up or down:
+#   kubectl scale statefulset game-server --replicas=4 -n kungfu-chess
+#
+# Each replica registers itself in Redis on startup, so the
+# GameAllocator automatically discovers all live servers.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: game-server
+  namespace: kungfu-chess
+  labels:
+    app: game-server
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  # Headless service: gives each pod a stable DNS name
+  #   game-server-0.game-server.kungfu-chess.svc.cluster.local
+  #   game-server-1.game-server.kungfu-chess.svc.cluster.local
+  # Used by the internal message bus for cross-server routing.
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: game-server
+  ports:
+    - name: websocket
+      port: 8765
+      targetPort: 8765
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # External-facing ClusterIP service that load-balances across all
+  # game-server pods.  Used by the API Gateway or a future ingress to
+  # send WebSocket connections to any available game server.
+  name: game-server-lb
+  namespace: kungfu-chess
+  labels:
+    app: game-server
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  type: ClusterIP
+  selector:
+    app: game-server
+  ports:
+    - name: websocket
+      port: 8765
+      targetPort: 8765
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: game-server
+  namespace: kungfu-chess
+  labels:
+    app: game-server
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  serviceName: game-server   # must match the headless Service name above
+  replicas: 2
+  podManagementPolicy: Parallel   # start all replicas simultaneously
+  selector:
+    matchLabels:
+      app: game-server
+  template:
+    metadata:
+      labels:
+        app: game-server
+        app.kubernetes.io/part-of: kungfu-chess
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: game-server
+          image: kfc-server:latest
+          # Override for local K3s with locally-built images:
+          #   imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8765
+              name: websocket
+          env:
+            # ── Unique server identity from the Pod name ──────────────────
+            # StatefulSet pod names are: game-server-0, game-server-1, …
+            # KFC_SERVER_ID is consumed by __main__.py and GameAllocator.
+            - name: KFC_SERVER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+            # ── Non-secret config from ConfigMap ─────────────────────────
+            - name: KFC_DB_BACKEND
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_DB_BACKEND
+            - name: KFC_WS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_WS_HOST
+            - name: KFC_WS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_WS_PORT
+            - name: KFC_REDIS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_REDIS_ENABLED
+            - name: KFC_REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_REDIS_URL
+            - name: KFC_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_LOG_LEVEL
+
+            # ── Secret: full DSN with password ────────────────────────────
+            - name: KFC_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kfc-postgres-secret
+                  key: postgres-dsn
+
+          readinessProbe:
+            # TCP check: port is open once the WebSocket server is listening
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+
+          livenessProbe:
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"

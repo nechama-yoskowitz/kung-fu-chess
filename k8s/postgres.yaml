@@ -1,0 +1,109 @@
+# PostgreSQL — persistent relational store for users and ratings.
+#
+# Uses a StatefulSet (single replica) with a PersistentVolumeClaim so
+# that user data survives pod restarts and re-schedules.
+#
+# For production you would replace this with a managed database service
+# (RDS, Cloud SQL, etc.) or a dedicated Postgres operator.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kungfu-chess
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  # ClusterIP: only reachable inside the cluster
+  type: ClusterIP
+  clusterIP: None   # headless — gives stable DNS: postgres.kungfu-chess.svc.cluster.local
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: kungfu-chess
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/part-of: kungfu-chess
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: kfc
+            - name: POSTGRES_DB
+              value: kungfu_chess
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kfc-postgres-secret
+                  key: postgres-password
+            # Place data on the mounted volume so it persists across restarts
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - kfc
+                - -d
+                - kungfu_chess
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - kfc
+                - -d
+                - kungfu_chess
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app: postgres
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

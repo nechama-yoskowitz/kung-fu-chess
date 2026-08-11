@@ -1,0 +1,124 @@
+# API Gateway — stateless HTTP service.
+#
+# Handles: /auth/register, /auth/login, /users/{username},
+#          /health, /ready, /metrics
+#
+# Fully stateless: any replica can handle any request.
+# Uses a Deployment (not StatefulSet) so rolling updates and
+# horizontal scaling work without stable pod identity.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: kungfu-chess
+  labels:
+    app: api-gateway
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  # NodePort exposes the gateway on every cluster node so it can be
+  # reached from outside the cluster without an ingress controller.
+  # Change to LoadBalancer for cloud environments, or add an Ingress.
+  type: NodePort
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080   # accessible at http://<node-ip>:30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: kungfu-chess
+  labels:
+    app: api-gateway
+    app.kubernetes.io/part-of: kungfu-chess
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  # Rolling update: never have zero ready replicas during a deploy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        app.kubernetes.io/part-of: kungfu-chess
+    spec:
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: api-gateway
+          image: kfc-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+
+          env:
+            # ── Server identity ───────────────────────────────────────────
+            - name: KFC_SERVER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name   # gateway pod name → /metrics label
+
+            # ── Non-secret config ─────────────────────────────────────────
+            - name: KFC_DB_BACKEND
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_DB_BACKEND
+            - name: KFC_HTTP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_HTTP_HOST
+            - name: KFC_HTTP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_HTTP_PORT
+            - name: KFC_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: kfc-config
+                  key: KFC_LOG_LEVEL
+
+            # ── Secret: full DSN with password ────────────────────────────
+            - name: KFC_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kfc-postgres-secret
+                  key: postgres-dsn
+
+          # ── Probes use the existing /health and /ready endpoints ───────
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

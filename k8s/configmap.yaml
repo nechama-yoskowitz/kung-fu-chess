@@ -1,0 +1,33 @@
+# Shared non-secret configuration for all Kung-Fu Chess services.
+# Secret values (passwords, DSNs with passwords) live in secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kfc-config
+  namespace: kungfu-chess
+  labels:
+    app.kubernetes.io/part-of: kungfu-chess
+data:
+  # Database backend: "postgres" in cluster
+  KFC_DB_BACKEND: "postgres"
+
+  # PostgreSQL connection (host only — DSN with password comes from Secret)
+  KFC_POSTGRES_HOST: "postgres"
+  KFC_POSTGRES_PORT: "5432"
+  KFC_POSTGRES_DB: "kungfu_chess"
+  KFC_POSTGRES_USER: "kfc"
+
+  # Redis
+  KFC_REDIS_ENABLED: "1"
+  KFC_REDIS_URL: "redis://redis:6379/0"
+
+  # WebSocket server
+  KFC_WS_HOST: "0.0.0.0"
+  KFC_WS_PORT: "8765"
+
+  # HTTP gateway
+  KFC_HTTP_HOST: "0.0.0.0"
+  KFC_HTTP_PORT: "8080"
+
+  # Logging
+  KFC_LOG_LEVEL: "INFO"
