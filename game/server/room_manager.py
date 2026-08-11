@@ -10,12 +10,16 @@ Responsibilities:
 Does not own GameSession lifecycle — delegates to GameSessionManager.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 
 from game.model.constants import DEFAULT_RATING
 from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
+from game.server.metrics import get_metrics_collector
+
+logger = logging.getLogger(__name__)
 
 
 MAX_PLAYERS_PER_ROOM = 2
@@ -64,6 +68,7 @@ class RoomManager:
     def __init__(self, session_manager: GameSessionManager):
         self._session_manager = session_manager
         self._rooms: dict[str, Room] = {}
+        self._metrics = get_metrics_collector()
 
     @property
     def room_count(self) -> int:
@@ -75,6 +80,8 @@ class RoomManager:
         session = self._session_manager.create_session()
         room = Room(room_id=room_id, session=session)
         self._rooms[room_id] = room
+        self._metrics.room_created()
+        logger.info("Room created", extra={"room_id": room_id})
         return room
 
     def get_room(self, room_id: str) -> Room | None:
@@ -113,6 +120,8 @@ class RoomManager:
         room = self._rooms.pop(room_id, None)
         if room:
             self._session_manager.remove_session(room.session)
+            self._metrics.room_closed()
+            logger.info("Room closed", extra={"room_id": room_id})
 
     def remove_client(self, websocket) -> None:
         """Remove a player or viewer from their room. Deletes room if empty."""

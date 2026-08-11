@@ -18,6 +18,7 @@ from game.server.game_session import GameSession
 from game.server.game_session_manager import GameSessionManager
 from game.server.internal_bus import NullInternalMessageBus
 from game.server.matchmaking.matchmaking_service import MatchmakingService
+from game.server.metrics import get_metrics_collector
 from game.server.rating.rating_service import RatingService
 from game.server.reconnect_manager import ReconnectManager
 from game.server.redis_store import HEARTBEAT_INTERVAL, NullRedisStore
@@ -54,6 +55,9 @@ class GameWebSocketServer:
         self._matchmaking_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None   # Stage 3
+        
+        # Stage 7: metrics
+        self._metrics = get_metrics_collector()
 
         # Build collaborators
         sm = session_manager or GameSessionManager()
@@ -118,7 +122,14 @@ class GameWebSocketServer:
         if hasattr(self._bus, "start_listener"):
             self._bus.start_listener(loop=asyncio.get_running_loop())
 
-        logger.info(f"Server started on ws://{self.host}:{self.port}")
+        logger.info(
+            "Server started",
+            extra={
+                "server_id": self._allocator.own_server_id,
+                "host": self.host,
+                "port": self.port
+            }
+        )
 
     async def stop(self) -> None:
         """Shut down server and background tasks."""
@@ -184,7 +195,14 @@ class GameWebSocketServer:
     async def _handle_client(self, websocket) -> None:
         """Handle a single client connection lifecycle."""
         remote = websocket.remote_address
-        logger.info(f"Client connected: {remote}")
+        self._metrics.connection_opened()
+        logger.info(
+            "Client connected",
+            extra={
+                "server_id": self._allocator.own_server_id,
+                "remote": str(remote)
+            }
+        )
         self._connected.add(websocket)
 
         try:
@@ -196,11 +214,27 @@ class GameWebSocketServer:
                 if session:
                     await session.drain_outbox()
         except websockets.ConnectionClosed:
-            logger.info(f"Client disconnected: {remote}")
+            logger.info(
+                "Client disconnected",
+                extra={
+                    "server_id": self._allocator.own_server_id,
+                    "remote": str(remote)
+                }
+            )
         except Exception as e:
-            logger.error(f"Error handling client {remote}: {e}")
+            self._metrics.error_occurred("websocket_handler")
+            logger.error(
+                "Error handling client",
+                extra={
+                    "server_id": self._allocator.own_server_id,
+                    "remote": str(remote),
+                    "error": str(e)
+                },
+                exc_info=True
+            )
         finally:
             self._connected.discard(websocket)
+            self._metrics.connection_closed()
             self.router.on_disconnect(websocket)
 
     # ─── Transport: send helpers ──────────────────────────────────────────
@@ -239,8 +273,19 @@ class GameWebSocketServer:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
             try:
                 self._store.server_heartbeat(self._allocator.own_server_id)
+                # Update metrics: active rooms and matchmaking queue size
+                self._metrics.set_matchmaking_queue_size(
+                    len(self.matchmaking._queue) if hasattr(self.matchmaking, "_queue") else 0
+                )
             except Exception as exc:
-                logger.warning(f"Heartbeat failed: {exc}")
+                self._metrics.error_occurred("heartbeat")
+                logger.warning(
+                    "Heartbeat failed",
+                    extra={
+                        "server_id": self._allocator.own_server_id,
+                        "error": str(exc)
+                    }
+                )
 
     # ─── Transport: public inspection ─────────────────────────────────────
 

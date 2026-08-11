@@ -32,11 +32,13 @@ Design decisions
 import asyncio
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 from aiohttp import web
 
 from game.server.auth.user_service import UserService
+from game.server.metrics import get_metrics_collector, format_prometheus
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,26 @@ async def user_profile(request: web.Request) -> web.Response:
     return _ok({"username": record.username, "rating": record.rating})
 
 
+# ── GET /metrics ──────────────────────────────────────────────────────────────
+
+async def metrics(request: web.Request) -> web.Response:
+    """
+    Prometheus-compatible metrics endpoint.
+
+    Returns plain-text Prometheus exposition format.
+    The server_id label comes from the KFC_SERVER_ID env var (or 'gateway').
+    """
+    collector = get_metrics_collector()
+    snapshot = collector.snapshot()
+    server_id = os.environ.get("KFC_SERVER_ID", "gateway")
+    body = format_prometheus(snapshot, server_id=server_id)
+    return web.Response(
+        status=200,
+        content_type="text/plain",
+        text=body,
+    )
+
+
 # ── Application factory ───────────────────────────────────────────────────────
 
 def create_app(user_service: UserService) -> web.Application:
@@ -229,5 +251,6 @@ def create_app(user_service: UserService) -> web.Application:
     app.router.add_post("/auth/register", register)
     app.router.add_post("/auth/login", login)
     app.router.add_get("/users/{username}", user_profile)
+    app.router.add_get("/metrics", metrics)
 
     return app
