@@ -41,6 +41,10 @@ class ServerConfig:
     # Logging
     log_level: str
 
+    # HTTP API Gateway port (Stage 6)
+    # Set KFC_HTTP_PORT to change; 0 means "do not start HTTP server"
+    http_port: int
+
     @classmethod
     def from_env(cls) -> "ServerConfig":
         """Build a config from current environment variables."""
@@ -59,4 +63,5 @@ class ServerConfig:
             redis_url=os.environ.get("KFC_REDIS_URL", "redis://localhost:6379/0"),
             redis_enabled=redis_enabled,
             log_level=os.environ.get("KFC_LOG_LEVEL", "INFO"),
+            http_port=int(os.environ.get("KFC_HTTP_PORT", "8080")),
         )

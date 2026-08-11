@@ -112,3 +112,29 @@ services:
       KFC_SERVER_ID: "server-2"
     ports:
       - "8766:8765"   # host:8766 → container:8765
+
+  # ── API Gateway ───────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KFC_DB_BACKEND: postgres
+      KFC_POSTGRES_DSN: postgresql://kfc:${POSTGRES_PASSWORD:-kfc_secret}@postgres:5432/kungfu_chess
+      KFC_HTTP_HOST: "0.0.0.0"
+      KFC_HTTP_PORT: "8080"
+      KFC_LOG_LEVEL: ${KFC_LOG_LEVEL:-INFO}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request, sys; r = urllib.request.urlopen('http://localhost:8080/health', timeout=4); sys.exit(0 if r.status == 200 else 1)\" 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

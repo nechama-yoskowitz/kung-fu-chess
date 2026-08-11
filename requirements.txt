@@ -14,3 +14,6 @@ psycopg[binary]>=3.1,<4
 
 # Redis client with async and sync support
 redis[hiredis]>=5.0,<6
+
+# HTTP API Gateway
+aiohttp>=3.9,<4

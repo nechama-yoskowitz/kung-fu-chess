@@ -40,8 +40,9 @@ class UserRepository:
         self._db_path = db_path
         # For in-memory databases, keep a single connection alive
         # (closing it would destroy the data).
+        # Set check_same_thread=False to allow use from ThreadPoolExecutor.
         if db_path == ":memory:":
-            self._shared_conn = sqlite3.connect(":memory:")
+            self._shared_conn = sqlite3.connect(":memory:", check_same_thread=False)
         else:
             self._shared_conn = None
 
