@@ -368,8 +368,14 @@ async def test_remote_jump_request_forwarded():
 @pytest.mark.asyncio
 async def test_owner_processes_inbound_command_and_responds():
     """
-    Owner router receives a GameCommand, processes it through the local
-    session, and publishes a GameResponse to the source server's events channel.
+    Owner router receives a GameCommand from a remote gateway, processes it
+    through the local session.
+
+    Stage 5 semantics:
+    - Broadcasts are fan-out via broadcast_event to each connection server
+      that has players (or directly to local websockets).
+    - A game_response is only sent when handle_message returns a direct reply
+      (e.g. an error).  Move requests return None (broadcast-only).
     """
     bus = NullInternalMessageBus()
     responses_sent = []
@@ -412,6 +418,13 @@ async def test_owner_processes_inbound_command_and_responds():
     from game.server.protocol import make_join_room
     await router._handle_join_room({"room_id": room_id}, ws2)
 
+    # Stage 5: alice's websocket lives on "gateway" (remote).
+    # Update the store so fan-out knows to send her a broadcast_event.
+    store.player_set_server("alice", "gateway")
+    # Remove alice from local auth so she's treated as remote
+    router._authenticated.pop(ws1, None)
+    router._ws_username.pop(ws1, None)
+
     # Simulate an inbound GameCommand arriving from gateway server
     cmd = make_game_command(
         source_server="gateway",
@@ -424,15 +437,21 @@ async def test_owner_processes_inbound_command_and_responds():
     )
     await router._handle_inbound_command(cmd)
 
-    # A GameResponse must have been published to the gateway's events channel
-    assert len(responses_sent) >= 1
-    channel, resp = responses_sent[0]
-    assert channel == events_channel("gateway")
-    assert resp["type"] == "game_response"
-    assert resp["request_id"] == "req-001"
-    assert resp["room_id"] == room_id
-    assert resp["source_server"] == "owner"
-    assert resp["target_server"] == "gateway"
+    # Stage 5: a broadcast_event must be published to the gateway's events channel
+    # (alice is remote; bob is local and gets direct delivery)
+    gateway_msgs = [
+        (ch, msg) for ch, msg in responses_sent
+        if ch == events_channel("gateway")
+    ]
+    assert len(gateway_msgs) >= 1, (
+        f"Expected >=1 message to gateway events channel, got: {responses_sent}"
+    )
+    _, bcast = gateway_msgs[0]
+    assert bcast["type"] == "broadcast_event", f"Expected broadcast_event, got {bcast['type']}"
+    assert bcast["room_id"] == room_id
+    assert bcast["source_server"] == "owner"
+    assert bcast["target_server"] == "gateway"
+    assert isinstance(bcast.get("broadcasts"), list)
 
 
 # ── 12 & 13. Gateway side: response delivery to client ───────────────────────

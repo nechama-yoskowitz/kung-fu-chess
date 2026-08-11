@@ -1,73 +1,29 @@
 """
 Internal inter-server message bus for Kung-Fu Chess.
 
-Stage 4: enables cross-server routing of game commands and responses so
-that a client connected to Server A can play a game owned by Server B.
-
-Architecture
-────────────
-Gateway server (A):
-  - receives game message from client
-  - looks up room owner in shared store
-  - if owner is a peer: publishes a GameCommand to that peer's channel
-  - listens on its own events channel for GameResponse messages
-  - delivers responses/broadcasts to the correct websockets
-
-Owner server (B):
-  - listens on its commands channel
-  - finds the authoritative GameSession for the room
-  - processes the command through session.handle_message()
-  - collects direct response + broadcasts from the session outbox
-  - publishes a GameResponse back to the source server's events channel
-
-Two implementations
-───────────────────
-NullInternalMessageBus
-  In-process, dict-based.  Handler callbacks are called synchronously.
-  Used in all unit tests — no Redis, no threads, no asyncio.
-
-RedisInternalMessageBus
-  Uses redis-py Pub/Sub.  Publish is synchronous (blocking Redis call).
-  Subscribe listener runs in a dedicated daemon thread that schedules
-  the async handler coroutine on the server's event loop via
-  loop.call_soon_threadsafe / asyncio.run_coroutine_threadsafe.
+Stage 4: enables cross-server routing of game commands and responses.
+Stage 5: adds create_room, join_room, matchmaking session creation,
+         reconnect, and broadcast fan-out so that a client on any server
+         can fully participate in a game owned by any other server.
 
 Channel names
 ─────────────
-  kfc:server:<server_id>:commands   — inbound game commands for that server
-  kfc:server:<server_id>:events     — inbound game events/responses for that server
+  kfc:server:<server_id>:commands   — inbound commands for that server
+  kfc:server:<server_id>:events     — inbound events/responses for that server
 
-Message format (JSON-serialisable dicts)
-──────────────────────────────────────────
-GameCommand:
-  {
-    "type": "game_command",
-    "request_id": "<uuid>",
-    "source_server": "server-A",
-    "target_server": "server-B",
-    "room_id": "abc12345",
-    "username": "alice",        # player who sent the command
-    "cmd": "move_request",      # original message type
-    "payload": {...}            # original validated payload (JSON-safe)
-  }
+Message types (all JSON-serialisable)
+──────────────────────────────────────
+Sent on :commands channel:
+  game_command        — move_request / jump_request forwarding (Stage 4)
+  create_room_cmd     — gateway asks owner to create a room (Stage 5)
+  join_room_cmd       — gateway asks owner to add a player/viewer (Stage 5)
+  create_session_cmd  — gateway asks owner to create a matchmaking session (Stage 5)
+  reconnect_cmd       — gateway asks owner to restore a disconnected player (Stage 5)
 
-GameResponse:
-  {
-    "type": "game_response",
-    "request_id": "<uuid>",
-    "source_server": "server-B",   # owner (responder)
-    "target_server": "server-A",   # gateway (original requester)
-    "room_id": "abc12345",
-    "username": "alice",            # player who sent the original command
-    "response": "<json-str>|null",  # direct reply to that player (may be null)
-    "broadcasts": ["<json-str>", ...]  # messages for ALL session members
-  }
-
-Constraints
-───────────
-- Do NOT store websocket objects, GameSession, or GameEngine in messages.
-- Payloads must be JSON-serialisable primitives only.
-- Handler callbacks must be async coroutines.
+Sent on :events channel:
+  game_response       — owner replies to game_command (Stage 4)
+  room_event          — owner replies with room/session result (Stage 5)
+  broadcast_event     — owner pushes game broadcasts to all connection servers (Stage 5)
 """
 
 import asyncio
@@ -79,7 +35,6 @@ from typing import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
-# Channel name helpers
 _NS = "kfc"
 
 
@@ -137,6 +92,144 @@ def make_game_response(
         "room_id": room_id,
         "username": username,
         "response": response,
+        "broadcasts": broadcasts,
+    }
+
+
+# ── Stage 5: new command envelope helpers ────────────────────────────────────
+
+def make_create_room_cmd(
+    *,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    username: str,
+    rating: int,
+    request_id: str | None = None,
+) -> dict:
+    """Gateway → owner: please create a room with this room_id and add username as first player."""
+    return {
+        "type": "create_room_cmd",
+        "request_id": request_id or uuid.uuid4().hex,
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
+        "username": username,
+        "rating": rating,
+    }
+
+
+def make_join_room_cmd(
+    *,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    username: str,
+    rating: int,
+    request_id: str | None = None,
+) -> dict:
+    """Gateway → owner: add username to an existing room."""
+    return {
+        "type": "join_room_cmd",
+        "request_id": request_id or uuid.uuid4().hex,
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
+        "username": username,
+        "rating": rating,
+    }
+
+
+def make_create_session_cmd(
+    *,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    player1_username: str,
+    player1_rating: int,
+    player1_server: str,
+    player2_username: str,
+    player2_rating: int,
+    player2_server: str,
+    request_id: str | None = None,
+) -> dict:
+    """Gateway → owner: create an authoritative matchmaking session for two players."""
+    return {
+        "type": "create_session_cmd",
+        "request_id": request_id or uuid.uuid4().hex,
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
+        "player1_username": player1_username,
+        "player1_rating": player1_rating,
+        "player1_server": player1_server,
+        "player2_username": player2_username,
+        "player2_rating": player2_rating,
+        "player2_server": player2_server,
+    }
+
+
+def make_reconnect_cmd(
+    *,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    session_id: str,
+    username: str,
+    color: str,
+    rating: int,
+    request_id: str | None = None,
+) -> dict:
+    """Gateway → owner: restore a disconnected player."""
+    return {
+        "type": "reconnect_cmd",
+        "request_id": request_id or uuid.uuid4().hex,
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
+        "session_id": session_id,
+        "username": username,
+        "color": color,
+        "rating": rating,
+    }
+
+
+def make_room_event(
+    *,
+    event_type: str,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    username: str,
+    request_id: str,
+    payload: dict,
+) -> dict:
+    """Owner → gateway: response to a room/session/reconnect command."""
+    return {
+        "type": "room_event",
+        "event_type": event_type,   # "room_created", "room_joined", "session_created", "reconnected", "error"
+        "request_id": request_id,
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
+        "username": username,
+        "payload": payload,
+    }
+
+
+def make_broadcast_event(
+    *,
+    source_server: str,
+    target_server: str,
+    room_id: str,
+    broadcasts: list[str],
+) -> dict:
+    """Owner → connection-server: push authoritative game broadcasts."""
+    return {
+        "type": "broadcast_event",
+        "source_server": source_server,
+        "target_server": target_server,
+        "room_id": room_id,
         "broadcasts": broadcasts,
     }
 

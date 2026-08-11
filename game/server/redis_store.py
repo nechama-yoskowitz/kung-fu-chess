@@ -312,6 +312,19 @@ class RedisStore:
         """Remove the player→server mapping (on disconnect)."""
         self._r.delete(_key("player", username, "server"))
 
+    # ── Stage 5: player color/role metadata ────────────────────────────────
+
+    def player_set_color(self, username: str, room_id: str, color: str) -> None:
+        """Record the color assigned to a player in a room."""
+        self._r.setex(_key("player", username, "color"), _PLAYER_ROOM_TTL, color)
+
+    def player_get_color(self, username: str) -> str | None:
+        """Return the color assigned to a player, or None."""
+        return self._r.get(_key("player", username, "color"))
+
+    def player_clear_color(self, username: str) -> None:
+        self._r.delete(_key("player", username, "color"))
+
     # ── Game Server Registry (Stage 3) ────────────────────────────────────
 
     def server_register(self, server_id: str) -> GameServerInfo:
@@ -590,6 +603,17 @@ class NullRedisStore:
 
     def player_clear_server(self, username: str) -> None:
         self._player_server.pop(username, None)
+
+    # ── Stage 5: player color/role metadata ────────────────────────────────
+
+    def player_set_color(self, username: str, room_id: str, color: str) -> None:
+        self._player_server[f"{username}:color"] = color
+
+    def player_get_color(self, username: str) -> str | None:
+        return self._player_server.get(f"{username}:color")
+
+    def player_clear_color(self, username: str) -> None:
+        self._player_server.pop(f"{username}:color", None)
 
     # ── Game Server Registry (Stage 3) ────────────────────────────────────
 

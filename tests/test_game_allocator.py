@@ -439,34 +439,83 @@ class TestPeerServerAllocation:
         return router, store
 
     async def test_peer_allocation_no_local_session_created(self):
-        router, store = self._make_router_with_peer_allocator("peer")
-        ws = _ws()
+        """
+        Stage 5: when allocation picks a remote peer, _handle_create_room
+        publishes a create_room_cmd to the bus and returns None (async
+        response path).  No local session is created.
+        """
+        from game.server.internal_bus import NullInternalMessageBus, commands_channel
 
+        bus = NullInternalMessageBus()
+        published = []
+
+        async def capture(channel, msg):
+            published.append((channel, msg))
+
+        bus.publish_async = capture  # type: ignore[method-assign]
+
+        router, store = self._make_router_with_peer_allocator("peer")
+        router._bus = bus
+
+        ws = _ws()
         router._authenticated[ws] = {"username": "alice", "rating": 1200}
         router._ws_username[ws] = "alice"
 
         result = await router._handle_create_room(ws)
-        msg = decode_message(result)
-        assert msg["type"] == "room_created"
+
+        # Stage 5: remote path returns None; room_created arrives async via bus
+        assert result is None
+
+        # A create_room_cmd must have been published to the peer's commands channel
+        assert len(published) == 1
+        channel, cmd = published[0]
+        assert channel == commands_channel("peer")
+        assert cmd["type"] == "create_room_cmd"
+        assert cmd["username"] == "alice"
 
         # No local session should exist for alice
         session = router.session_manager.get_session_for_client(ws)
         assert session is None
 
     async def test_peer_allocation_stores_routing_metadata(self):
-        router, store = self._make_router_with_peer_allocator("peer")
-        ws = _ws()
+        """
+        Stage 5: when allocation picks a remote peer, the player→server
+        metadata is stored so the bus callback can deliver room_created.
+        The room_id is carried in the published create_room_cmd.
+        """
+        from game.server.internal_bus import NullInternalMessageBus, commands_channel
 
+        bus = NullInternalMessageBus()
+        published = []
+
+        async def capture(channel, msg):
+            published.append((channel, msg))
+
+        bus.publish_async = capture  # type: ignore[method-assign]
+
+        router, store = self._make_router_with_peer_allocator("peer")
+        router._bus = bus
+
+        ws = _ws()
         router._authenticated[ws] = {"username": "alice", "rating": 1200}
         router._ws_username[ws] = "alice"
 
-        result = await router._handle_create_room(ws)
-        msg = decode_message(result)
-        room_id = msg["payload"]["room_id"]
+        await router._handle_create_room(ws)
 
-        # Routing metadata must record peer as owner
-        owner = store.room_get_server(room_id)
-        assert owner == "peer"
+        # The room_id was assigned before publishing the cmd
+        assert len(published) == 1
+        _, cmd = published[0]
+        room_id = cmd["room_id"]
+        assert room_id, "room_id must be non-empty"
+
+        # player→server metadata must point to local-server (gateway side)
+        alice_server = store.player_get_server("alice")
+        assert alice_server == "local-server"
+
+        # NOTE: room→server metadata is NOT stored on the gateway at this point;
+        # it is written by the owner in _owner_handle_create_room and then
+        # delivered back via room_event("room_created").
+        # The gateway side stores it in _handle_inbound_room_event.
 
     async def test_local_allocation_creates_session(self):
         """Sanity: with NullGameAllocator (always local), session IS created."""
