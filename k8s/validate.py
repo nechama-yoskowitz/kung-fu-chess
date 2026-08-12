@@ -109,6 +109,9 @@ def validate_all():
                         f"{label}: namespace={ns!r}, expected 'kungfu-chess'"
                     )
 
+            # StatefulSet/Deployment: image tag is not validated here
+            # (amd64 variants are used in the local kind cluster)
+
             # StatefulSet-specific checks
             if got_kind == "StatefulSet":
                 spec = doc.get("spec", {})
